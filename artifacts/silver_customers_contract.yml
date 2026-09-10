@@ -1,0 +1,219 @@
+contract:
+  name: silver_customers
+  version: 1.1.0
+  status: REVISED
+  revision_note: >
+    Revised per reviewer findings (verdict: REVISE). Corrected the
+    bronze_silver_row_reconciliation root-cause narrative: only 6 of the 9
+    dropped bronze customer_ids have irregular kyc_status values; the other 3
+    (18, 34, 46) have kyc_status = REJECTED, which is already canonical.
+    All other reviewer-confirmed findings (PK uniqueness, rule pass/fail
+    results, null rates, DOB exceptions, reconciliation counts, duplicate
+    collapse, orphan check, schema/types, PII/quasi-identifier disclosures)
+    are unchanged as they were verified accurate against the live data.
+
+  owner:
+    team: Retail Banking — Customer Domain
+    domain: Retail Banking
+    steward: customer-domain-dpo@bank.internal
+    escalation: data-platform-oncall@bank.internal
+
+  description: >
+    Cleansed, deduplicated customer master table. One row per unique
+    customer_id, derived from bronze_customers via exact-duplicate
+    collapse. Serves as the golden customer reference for downstream
+    account, transaction, and risk/KYC consumers.
+
+  lineage:
+    upstream:
+      - table: bronze_customers
+        relationship: >
+          silver_customers is produced from bronze_customers by collapsing
+          exact-duplicate rows (same customer_id, all fields identical) to
+          a single row per customer_id, and dropping rows that fail
+          downstream cleansing/validation.
+    downstream_known_consumers:
+      - silver_accounts (FK: customer_id)
+      - risk & KYC reporting marts (consumes kyc_status, risk_rating)
+
+  semantics:
+    grain: One row per customer_id (natural/business key = customer_id)
+    primary_key: [customer_id]
+    freshness_sla: >
+      Table is refreshed on a daily batch cadence aligned with the
+      bronze_customers ingestion job. No updated_at/ingestion timestamp
+      column exists in the schema (confirmed via DESCRIBE); freshness is
+      tracked at DATE granularity via created_at and pipeline run logs
+      only, not via an in-table watermark column.
+    row_count_as_of_review: 291
+
+  schema:
+    - column: customer_id
+      type: BIGINT
+      nullable: false
+      pii: false
+      description: Unique surrogate/business identifier for a customer. Primary key.
+    - column: first_name
+      type: VARCHAR
+      nullable: false
+      pii: true
+      description: Customer first name. Direct identifier — masking required.
+    - column: last_name
+      type: VARCHAR
+      nullable: false
+      pii: true
+      description: Customer last name. Direct identifier — masking required.
+    - column: email
+      type: VARCHAR
+      nullable: true
+      pii: true
+      description: >
+        Customer email address. 10.3% null. Direct identifier — masking
+        required. Must conform to standard email format when present.
+    - column: date_of_birth
+      type: DATE
+      nullable: true
+      pii: true
+      description: >
+        Customer date of birth. 3.8% null. Direct identifier — masking
+        required. Subject to plausibility rule (see quality_rules); 6
+        documented exceptions currently exist.
+    - column: city
+      type: VARCHAR
+      nullable: true
+      pii: false
+      description: >
+        Customer city of residence. 12.0% null. Not a direct identifier,
+        but flagged as a quasi-identifier: in combination with name and
+        date_of_birth it carries re-identification risk and should be
+        reviewed under access-control policy alongside PII columns.
+    - column: kyc_status
+      type: VARCHAR
+      nullable: true
+      pii: false
+      description: >
+        KYC verification status. 25.4% null. Must be one of the canonical
+        enum values {PENDING, VERIFIED, REJECTED} when present (see
+        kyc_status_enum rule).
+    - column: risk_rating
+      type: INTEGER
+      nullable: true
+      pii: false
+      description: >
+        Internal risk score, 1 (lowest) to 5 (highest). 32.6% null. Must
+        fall within [1,5] when present (see risk_rating_range rule).
+    - column: created_at
+      type: DATE
+      nullable: false
+      pii: false
+      description: Date the customer record was first created upstream.
+
+  quality_rules:
+    - name: pk_not_null_unique
+      assertion: >
+        COUNT(*) = COUNT(DISTINCT customer_id) AND
+        COUNT(*) FILTER (WHERE customer_id IS NULL) = 0
+      status: PASS
+      evidence: "291 rows, 291 distinct customer_id, 0 nulls — verified."
+      severity: blocking
+
+    - name: email_format
+      assertion: >
+        email IS NULL OR email ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+      status: PASS
+      evidence: "0 violation rows — verified."
+      severity: blocking
+
+    - name: kyc_status_enum
+      assertion: kyc_status IS NULL OR kyc_status IN ('PENDING','VERIFIED','REJECTED')
+      status: PASS
+      evidence: "0 violation rows — verified."
+      severity: blocking
+
+    - name: risk_rating_range
+      assertion: risk_rating IS NULL OR risk_rating BETWEEN 1 AND 5
+      status: PASS
+      evidence: "0 violation rows — verified."
+      severity: blocking
+
+    - name: date_of_birth_plausible
+      assertion: >
+        date_of_birth IS NULL OR (date_of_birth <= CURRENT_DATE
+        AND date_of_birth >= DATE '1900-01-01')
+      status: MONITORED_NON_BLOCKING
+      severity: non_blocking
+      documented_exceptions:
+        customer_ids: [259, 274, 183, 90, 169, 106]
+      evidence: >
+        Exactly 6 violating rows, customer_ids match exactly as listed.
+        Downgraded from blocking to non-blocking with documented
+        exceptions per prior review; not silently hidden.
+
+    - name: bronze_silver_row_reconciliation
+      assertion: >
+        COUNT(DISTINCT bronze_customers.customer_id) -
+        COUNT(DISTINCT silver_customers.customer_id) = expected_dropped_count
+      status: OPEN_CRITICAL
+      severity: blocking_for_investigation
+      evidence: >
+        bronze_customers has 309 rows / 300 distinct customer_ids (9 exact
+        full-row duplicates); silver_customers has 291 rows. This yields
+        exactly 9 missing customer_ids relative to bronze's distinct set:
+        18, 24, 31, 34, 46, 58, 144, 205, 236.
+      duplicate_collapse_note: >
+        Separately, 9 bronze customer_ids (5, 45, 103, 145, 160, 168, 189,
+        234, 284) are true exact-field duplicates in bronze and are
+        correctly collapsed 1:1 into silver — this is expected, benign
+        dedup behavior and is unrelated to the 9 missing ids above.
+      status_as_of_review: >
+        ROOT CAUSE CORRECTED (this revision): the kyc_status values for the
+        9 dropped customer_ids were queried directly and are: 18=REJECTED,
+        24=NULL, 31="" (blank), 34=REJECTED, 46=REJECTED, 58=verified
+        (lowercase), 144=verified (lowercase), 205="" (blank),
+        236=pending (lowercase). Only 6 of the 9 (24, 31, 58, 144, 205, 236)
+        have irregular values (null, blank, or non-canonical case). The
+        remaining 3 (18, 34, 46) have kyc_status = REJECTED, which exactly
+        matches the canonical enum and is not irregular in any way. The
+        previous statement that "all 9 have irregular kyc_status" was
+        factually wrong and has been removed. kyc_status irregularity
+        therefore does NOT explain the row drop for at least a third of
+        the affected records, and should not be treated as a confirmed or
+        even likely root cause. The actual cause of the 9 missing rows
+        remains UNDETERMINED and is an open investigation item; no other
+        candidate field (email, DOB, city, risk_rating) has yet been
+        checked for correlation. Do not action remediation based on a
+        kyc_status-driven hypothesis until further root-cause analysis is
+        completed.
+      no_orphan_downstream_accounts:
+        check: silver_accounts.customer_id NOT IN (the 9 missing ids)
+        result: "0 rows found — confirmed no dangling FK / orphaned accounts."
+
+  access_control:
+    masking_required:
+      - first_name
+      - last_name
+      - email
+      - date_of_birth
+    quasi_identifier_review_required:
+      - city
+    notes: >
+      city is not itself PII but combined with first_name/last_name/
+      date_of_birth may enable re-identification; access to city should be
+      reviewed under the same governance process as direct PII fields when
+      joined with name/DOB data.
+
+  consumer_guarantees:
+    - Primary key (customer_id) is guaranteed unique and non-null.
+    - email, kyc_status, and risk_rating values, when present, always
+      conform to their respective format/enum/range rules.
+    - date_of_birth may contain up to 6 currently-documented implausible
+      values (non-blocking, tracked exceptions); consumers doing age-based
+      calculations should filter or handle these explicitly.
+    - "KNOWN GAP: 9 customer_ids present in bronze_customers are absent
+      from silver_customers. Root cause is NOT yet established (see
+      bronze_silver_row_reconciliation); it is confirmed these 9 ids have
+      no orphaned records in silver_accounts. Consumers should not assume
+      referential completeness against bronze_customers."
+    - No in-table freshness/ingestion timestamp column exists; consumers
+      needing freshness tracking must rely on pipeline run metadata, not
+      this table's columns.

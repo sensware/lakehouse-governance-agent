@@ -7,9 +7,12 @@ a structured verdict). That hand-off *is* the A2A protocol in miniature:
     Author agent  --(draft contract)-->  Reviewer agent  --(verdict, findings)-->  Author
                   <--(revised draft)--
 
-The loop stops when the reviewer approves or we hit MAX_ROUNDS. Each side keeps
-its own memory (its own transcript); only the artifact and the verdict cross the
-boundary — that's the point of a protocol over a shared context window.
+The loop stops when the reviewer approves or we exhaust MAX_REVISIONS. Every
+revision is reviewed — the last word is always the reviewer's, never an unchecked
+draft (a lesson from the first run, where the final fix went un-reviewed).
+Each side keeps its own memory (its own transcript); only the artifact and the
+verdict cross the boundary — that's the point of a protocol over a shared context
+window.
 
   uv run lga review silver_customers
 """
@@ -26,7 +29,7 @@ from .agent import run_agent
 from .config import ARTIFACTS_DIR
 
 console = Console()
-MAX_ROUNDS = 2
+MAX_REVISIONS = 2  # -> up to MAX_REVISIONS + 1 reviews
 
 AUTHOR_SYSTEM = """You are the Data Product Owner for a table in a bank's lakehouse.
 Draft a **data contract** for the table you're given. Investigate it with tools first.
@@ -51,7 +54,7 @@ def contract_review(table: str) -> None:
     console.rule(f"[bold]A2A · round 1 · author drafts {table}")
     run_agent(f"Draft the data contract for `{table}`.", system=AUTHOR_SYSTEM)
 
-    for round_no in range(1, MAX_ROUNDS + 1):
+    for round_no in range(1, MAX_REVISIONS + 2):
         if not contract_path.exists():
             console.print(f"[red]author did not write {contract_path.name}[/]")
             return
@@ -69,6 +72,8 @@ def contract_review(table: str) -> None:
         if verdict == "APPROVE":
             console.print(f"[green]approved after {round_no} review round(s)[/] -> {contract_path}")
             return
+        if round_no > MAX_REVISIONS:
+            break  # budget spent; the final verdict on record is a real review, not a guess
 
         console.rule(f"[bold]A2A · round {round_no} · author revises")
         run_agent(
@@ -78,7 +83,10 @@ def contract_review(table: str) -> None:
             system=AUTHOR_SYSTEM,
         )
 
-    console.print("[yellow]max review rounds reached — contract still marked REVISE[/]")
+    console.print(
+        f"[yellow]{MAX_REVISIONS} revisions exhausted — contract still REVISE; "
+        f"escalate to a human with {table}_review_r{MAX_REVISIONS + 1}.md[/]"
+    )
 
 
 def _parse_verdict(text: str) -> str:

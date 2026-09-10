@@ -57,7 +57,9 @@ Google's A2A spec formalises the same idea with agent cards, tasks, and artifact
 - **Separation of duties**: the drafter cannot approve its own work.
 - **Evidence-based**: the reviewer is instructed *not* to trust the draft and to re-verify
   with tools (PK uniqueness, PII flags, rule satisfaction).
-- **Bounded**: `MAX_ROUNDS` stops infinite ping-pong; a human reads the final artifact.
+- **Bounded**: `MAX_REVISIONS` stops infinite ping-pong, and the loop *always ends on a
+  review* — the last word on record is a verdict, never an unchecked draft. On exhaustion it
+  escalates to a human with the final review file.
 
 ### Orchestration frameworks (JD: LangChain, AutoGen, CrewAI)
 | Framework | Equivalent of this file |
@@ -71,5 +73,6 @@ The concepts transfer 1:1; the frameworks add persistence, streaming, and UI.
 ## Try
 1. Run `lga review silver_customers`. Read `artifacts/silver_customers_contract.yml` and
    `artifacts/silver_customers_review_r1.md`. Did the reviewer catch anything real?
-2. Change `MAX_ROUNDS` to 1 and observe an unresolved REVISE — this is why loops need budgets.
+2. Set `MAX_REVISIONS = 0` and observe a single review with no revision — this is why loops
+   need budgets, and why the budget should count *revisions*, not reviews.
 3. Add a third agent: a **Compliance** persona that only checks GDPR/KYC items.

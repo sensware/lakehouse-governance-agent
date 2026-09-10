@@ -14,4 +14,4 @@ wheels/
 
 # Generated data + indexes + agent output
 data/lakehouse.duckdb
-artifacts/
+artifacts/catalog_index/

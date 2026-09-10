@@ -38,6 +38,7 @@ Outputs land in `artifacts/`.
 | [docs/02-rag.md](docs/02-rag.md) | RAG, embeddings, FAISS, grounding, retrieval telemetry |
 | [docs/03-react-agent.md](docs/03-react-agent.md) | ReAct loop, tool design, prompt engineering, memory, ToT/AutoGPT |
 | [docs/04-mcp-and-a2a.md](docs/04-mcp-and-a2a.md) | MCP as a governed tool boundary; author/reviewer A2A protocol |
+| [docs/05-first-run-debrief.md](docs/05-first-run-debrief.md) | What the agents found, what they missed (anchoring), a real pipeline bug they surfaced |
 
 ## Layout
 

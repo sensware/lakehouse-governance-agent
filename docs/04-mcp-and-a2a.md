@@ -23,8 +23,9 @@ is the architectural point: **define the tool surface once, expose it through wh
 transport the consumer needs.**
 
 ### Register it with Claude Code and use it interactively
+The repo's `.mcp.json` declares the server; Claude Code picks it up when you open the folder
+(approve it once when prompted). With the standalone CLI you can also do:
 ```bash
-cd ~/source/lakehouse-governance-agent
 claude mcp add lakehouse-governance -- uv run python -m lga.mcp_server
 ```
 Then in a Claude Code session: *"Use the lakehouse tools to find orphan accounts."*

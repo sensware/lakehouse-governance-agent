@@ -16,40 +16,54 @@ from __future__ import annotations
 import json
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError as MCPToolError
 
 from . import tools as T
 
 mcp = MCPServer("lakehouse-governance")
 
 
+def _run(name: str, **args) -> str:
+    """Call a registry tool; turn guardrail rejections into *expected* MCP errors.
+
+    mcp treats any other exception as a crash and keeps its text server-side — the model
+    would see only "Error executing tool" and couldn't fix its SQL. An MCPToolError carries
+    the reason across the wire as an is_error result, same as the in-process loop.
+    """
+    try:
+        return json.dumps(T.call_tool(name, args), default=str)
+    except T.ToolError as e:
+        raise MCPToolError(str(e)) from e
+
+
 @mcp.tool()
 def list_tables() -> str:
     """List every lakehouse table with its medallion layer, domain, and row count."""
-    return json.dumps(T.list_tables(), default=str)
+    return _run("list_tables")
 
 
 @mcp.tool()
 def run_sql(sql: str) -> str:
     """Run ONE read-only SQL statement (SELECT/WITH/EXPLAIN/DESCRIBE) against the lakehouse."""
-    return json.dumps(T.run_sql(sql), default=str)
+    return _run("run_sql", sql=sql)
 
 
 @mcp.tool()
 def profile_column(table: str, column: str) -> str:
     """Profile a column: null %, cardinality, min/max, mean/stddev, sample values, PII flag."""
-    return json.dumps(T.profile_column(table, column), default=str)
+    return _run("profile_column", table=table, column=column)
 
 
 @mcp.tool()
 def search_catalog(query: str, k: int = 3) -> str:
     """Semantic search over the catalog cards (RAG retriever)."""
-    return json.dumps(T.search_catalog(query, k), default=str)
+    return _run("search_catalog", query=query, k=k)
 
 
 @mcp.tool()
 def write_artifact(filename: str, content: str) -> str:
     """Save a governance deliverable (.md/.yml/.json/.sql) into artifacts/."""
-    return json.dumps(T.write_artifact(filename, content))
+    return _run("write_artifact", filename=filename, content=content)
 
 
 if __name__ == "__main__":

@@ -55,6 +55,11 @@ docs/                     one concept note per phase
 
 ## Use the tools from Claude Code
 
+The repo ships a project-scoped [`.mcp.json`](.mcp.json). Open this folder in Claude Code
+(desktop app or CLI) and approve the `lakehouse-governance` server when prompted — then ask
+things like *"use the lakehouse tools to find accounts with no matching customer"*.
+
+Equivalent one-liner if you use the standalone CLI (`claude` on your PATH):
 ```bash
 claude mcp add lakehouse-governance -- uv run python -m lga.mcp_server
 ```

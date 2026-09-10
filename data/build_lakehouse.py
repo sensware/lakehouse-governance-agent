@@ -179,8 +179,11 @@ def main() -> None:
             nullif(risk_rating, 99)                                AS risk_rating,
             created_at
         FROM deduped
+        -- Age rule is relative to onboarding (created_at), not today: a customer who was
+        -- 16 at onboarding is a KYC exception regardless of how old they are now.
+        -- (First version used current_date; the reviewer agent caught it — see docs/05.)
         WHERE date_of_birth IS NULL
-           OR date_of_birth BETWEEN DATE '1910-01-01' AND current_date - INTERVAL 18 YEAR
+           OR date_of_birth BETWEEN DATE '1910-01-01' AND created_at - INTERVAL 18 YEAR
         """
     )
 

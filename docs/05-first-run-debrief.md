@@ -90,6 +90,35 @@ correction was never checked. `a2a.py` now always ends on a review: `MAX_REVISIO
 `MAX_REVISIONS + 1` reviews, and on exhaustion it names the review file to escalate to a human.
 Verified offline with stubbed agents.
 
+## Run 2 — after fixing the age filter and the loop shape
+
+**Change:** silver's rule became `date_of_birth <= created_at - 18 YEAR`. Silver now keeps
+285 of 300 distinct customers (9 too-young DOBs + 6 minors-at-onboarding dropped).
+**Trace:** draft → REVISE → revise → REVISE → revise → **APPROVE** (3 reviews, 75 tool calls,
+0 errors). Artifacts: `silver_customers_contract.yml` v2.0.1, `..._review_r1..r3.md`.
+
+| Round | What happened |
+|---|---|
+| 1 | Reviewer: lineage claims "1:1 cleansing" but 15 customers (5%) vanish — an *undocumented rejection filter*; no reconciliation rule; no GDPR erasure process on a PII master; suggests `personal_data` tag for `kyc_status`/`risk_rating`. It guessed the cause was partly malformed `city` — **wrong**, but it raised the right issue. |
+| 2 | Author had pivoted to the correct DOB correlation and added a reconciliation rule, a rejected-records audit trail, and an erasure clause. Reviewer verified 11 claims in a table and found **one number wrong**: "14 of 15 dropped rows have DOB ≥ 2003" — actually 15 of 15. REVISE, "re-approve once corrected". |
+| 3 | Reviewer re-ran every check independently, confirmed the correction, APPROVE — with the row drop kept open as a tracked known issue rather than swept away. |
+
+### What changed vs run 1, and what didn't
+
+- **The anchoring resolved.** With the `kyc_status` noise gone from the dropped set, the author
+  found the DOB pattern by round 2. Cleaner data → cleaner hypotheses; the mitigations listed
+  above still apply when the signal is weaker.
+- **The author got a number wrong in both runs.** Run 1: "all 9 have irregular kyc_status" (6 did).
+  Run 2: "14 of 15" (15 did). Both were *evidentiary* statistics in a governance document. Both
+  times the reviewer caught it by re-querying. **This is the strongest argument for the
+  author/reviewer pattern: LLM-stated numbers are claims until a tool re-derives them.**
+- **The agents still call the filter "undocumented" and "buggy".** They're right to: the
+  rejection rule lives only in `build_lakehouse.py`, which they can't read. In a real platform the
+  contract (or dbt model docs) is where that rule must be declared — the agent is telling you
+  your lineage metadata is incomplete, which is a correct governance finding.
+- **The loop ended on a verdict.** Round 2's "re-approve once corrected" would have been the
+  last word under the old loop; now round 3 exists to say APPROVE.
+
 ## Cost & observability notes
 
 - Opus 5 with adaptive thinking: the agent audit was ~5 model calls; the A2A run ~5 agent runs

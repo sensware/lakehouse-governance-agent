@@ -25,9 +25,12 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.cmd == "build-data":
-        from data.build_lakehouse import main as build  # type: ignore
+        import runpy
 
-        build()
+        from .config import DATA_DIR
+
+        # data/ is a plain script dir, not a package — run it by path.
+        runpy.run_path(str(DATA_DIR / "build_lakehouse.py"), run_name="__main__")
     elif args.cmd == "catalog":
         from .catalog import build_catalog
 

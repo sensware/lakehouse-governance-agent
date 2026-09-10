@@ -1,22 +1,28 @@
-I verified every material claim in this contract against the live lakehouse data. Findings:
+## Governance Review: `silver_customers` Data Contract v2.0.0
 
-**Confirmed accurate (matches data exactly):**
-- PK uniqueness: 291 rows, 291 distinct `customer_id`, no nulls/dupes — `pk_not_null_unique` truly PASSES.
-- `email_format`, `kyc_status_enum`, `risk_rating_range` rules: all return 0 violation rows — genuinely PASS.
-- Null rates: email 10.3%, DOB 3.8%, city 12.0%, kyc_status 25.4%, risk_rating 32.6% — all match profiled data precisely.
-- `date_of_birth_plausible`: exactly 6 violating rows, and the customer_ids listed (259, 274, 183, 90, 169, 106) match exactly. Downgrade to non-blocking with documented exceptions is justified — not silently hidden.
-- `bronze_silver_row_reconciliation`: bronze has 309 rows / 300 distinct ids (9 exact duplicates), silver has 291 rows → exactly 9 missing ids, and the listed ids (18,24,31,34,46,58,144,205,236) match exactly.
-- Duplicate collapse claim: verified the 9 duplicate bronze customer_ids (5,45,103,145,160,168,189,234,284) are true exact-field duplicates, so 1:1 collapse logic is correctly described.
-- `no_orphan_downstream_accounts...`: confirmed 0 rows in silver_accounts for the 9 missing ids — no dangling FK, as claimed.
-- Schema types (BIGINT/VARCHAR/DATE/INTEGER), nullability, and absence of any updated_at/ingestion timestamp column all match `DESCRIBE silver_customers` — the freshness/DATE-granularity claim is legitimate, not overstated.
-- first_name/last_name have 0 nulls despite `nullable: false` claim — consistent.
-- PII flagging (first_name, last_name, email, date_of_birth) is appropriate; city correctly *not* flagged as direct PII but correctly called out as a quasi-identifier risk in combination with name/DOB — this is good GDPR practice (re-identification risk via quasi-identifiers), and access_control section correctly separates masking-required columns from quasi-identifier-review columns.
+**Verification performed against live lakehouse data:**
 
-**One factual inaccuracy found in the root-cause narrative:**
-- The contract states the 9 dropped bronze rows "have irregular kyc_status values ... blank string, NULL, or non-canonical case." I queried the actual kyc_status values for those 9 ids: `REJECTED, verified, REJECTED, "", REJECTED, NULL, pending, verified, ""`. Three of the nine (customer_ids 18, 46, 34) have the value `REJECTED`, which is **already canonical** (matches the allowed enum exactly, no case issue, not blank/null). This contradicts the "all 9 have irregular kyc_status" claim and materially weakens the (already-hedged) kyc_status-correlation hypothesis — in fact it further supports that kyc_status irregularity is *not* the driver, since a third of the dropped rows have perfectly clean kyc_status. This should be corrected before sign-off so the remediation team isn't misdirected.
+| Claim | Contract states | Verified value | Match? |
+|---|---|---|---|
+| PK uniqueness | `customer_id` unique, non-null | 285 rows, 285 distinct, 0 nulls | ✅ |
+| Bronze row/id counts | 309 rows, 300 distinct ids, 9 duplicated | Confirmed exactly 9 duplicate ids (5,45,103,145,160,168,189,234,284) | ✅ |
+| Undocumented filter drop | 15 distinct bronze ids (5%) missing from silver | Confirmed: `bronze EXCEPT silver` = 15 rows | ✅ |
+| Row-count reconciliation 5.0% | 15/300 = 5.0% | Confirmed | ✅ |
+| Risk_rating sentinel 99 handling | Sentinel 99 nulled correctly | Bronze has 47 rows with 99; silver has 0 rows with 99 or out-of-range values | ✅ |
+| kyc_status enum/casing standardization | Uppercase, enum-only, blanks nulled | Confirmed only {VERIFIED, PENDING, REJECTED, NULL} remain, 0 lowercase | ✅ |
+| City trimming/casing | Standardized trimmed/title-case | Confirmed 0 rows with untrimmed/non-title-case values | ✅ |
+| Null-rate thresholds (email 10.2%, kyc_status 24.9%, risk_rating 32.6%) | As stated | Profile matches exactly | ✅ |
+| Email regex compliance | 100% of non-null match regex | Confirmed 0 violations | ✅ |
+| DOB plausibility (≥18yrs) | 0 under-18 rows retained | Confirmed 0 rows with DOB > current_date−18y | ✅ |
+| PII/personal_data flags | first/last/email/DOB = direct PII; city/kyc_status/risk_rating = personal_data only | Consistent with actual column semantics (quasi-identifiers vs direct identifiers) — reasonable GDPR classification | ✅ |
+| GDPR erasure process | DPO-routed, legal-obligation exception under Art. 17(3)(b), audit log | Policy narrative, not independently verifiable via SQL, but internally consistent and appropriately scoped (not a blanket override) | ✅ (procedural, plausible) |
 
-This is a documentation-accuracy defect in an otherwise unusually well-verified, transparent contract (the drafters clearly did real investigative work — dedup counts, reconciliation, orphan checks, and null-rate figures all check out against the data). The defect doesn't change the overall risk posture (row loss is still open/critical, DOB rule still monitored) but the stated evidence for the root-cause hypothesis is factually wrong and must be fixed.
+**Discrepancy found:**
+The lineage narrative states *"14 of 15 dropped bronze customer_ids have date_of_birth on/after 2003-01-01 (versus only 4 such rows retained in silver)."* Direct query of the actual 15 dropped rows shows **all 15 (100%), not 14**, have `date_of_birth >= '2003-01-01'`. The "4 retained" figure is correct (confirmed independently), but the "14 of 15" figure is wrong — it should be "15 of 15." This is a factual/numeric error in a document whose central argument (that the undocumented filter is a buggy, DOB-correlated defect) rests specifically on these cited statistics. Since this document is meant to serve as an auditable evidentiary record supporting a remediation ticket (DATA-4821) and regulatory reconciliation rule, the underlying evidence must be exactly correct.
+
+Everything else — PK integrity, standardization logic, sentinel-null handling, PII/personal_data classification, quality rule pass/fail status, and the GDPR erasure workflow — checks out faithfully against the data.
 
 VERDICT: REVISE
-- Correct the `bronze_silver_row_reconciliation.status_as_of_review` narrative: 3 of the 9 dropped customer_ids (18, 46, 34) have kyc_status = `REJECTED`, which is already canonical — not "irregular" as currently stated. Re-word to avoid overstating the kyc_status correlation, since this undercuts even the "malformed kyc_status alone does not explain the drop" hedge already present.
-- No other discrepancies found; once the above wording is corrected, the contract's PK, quality-rule, lineage, freshness, and PII/quasi-identifier disclosures are all verified accurate against the lakehouse and this contract should be approvable.
+- Correct the lineage narrative statistic: 15 of 15 (not 14 of 15) dropped bronze `customer_id`s have `date_of_birth >= 2003-01-01`; re-verify and update the "known_issues" (KI-1) and `filter_undocumented` text accordingly before sign-off, since this figure is cited as evidentiary support for the root-cause diagnosis.
+- Once corrected, re-confirm the row_count_reconciliation and rejected_records_audit_trail rule descriptions still align with the corrected stat (no other numeric changes expected).
+- No other defects found; PK, dedup counts, standardization, sentinel-null cleansing, null-rate thresholds, PII/personal_data classification, and GDPR erasure process are all verified accurate and may be re-approved once the above correction is made.

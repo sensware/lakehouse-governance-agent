@@ -119,6 +119,23 @@ Verified offline with stubbed agents.
 - **The loop ended on a verdict.** Round 2's "re-approve once corrected" would have been the
   last word under the old loop; now round 3 exists to say APPROVE.
 
+## Follow-up — quarantine instead of silent drops
+
+Both runs flagged the same anti-pattern: rows vanishing in a `SEMI JOIN`. The fix is a
+**rejection table with reason codes**, built in the same step that filters:
+
+```
+silver_accounts_rejected = bronze_accounts ANTI JOIN silver_customers
+  + reason_code  ∈ {ORPHAN_CUSTOMER, CUSTOMER_REJECTED_UPSTREAM}
+  + rejected_by, rejected_at
+```
+
+Invariant now testable in a contract: `count(bronze) = count(silver) + count(rejected)`, no
+overlap. First result through the MCP tools: 35 upstream-rejected accounts hold **£4.80M** in
+balances — the age-rule fix is quarantining material money, which nobody could see before.
+Same treatment belongs on `silver_customers` (reason codes `DOB_IMPLAUSIBLE`, `MINOR_AT_ONBOARDING`)
+— left as the next exercise.
+
 ## Cost & observability notes
 
 - Opus 5 with adaptive thinking: the agent audit was ~5 model calls; the A2A run ~5 agent runs

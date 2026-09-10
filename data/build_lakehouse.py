@@ -207,6 +207,27 @@ def main() -> None:
         """
     )
 
+    # Quarantine: every bronze account that did NOT make it to silver, with a reason code.
+    # Rejections must be visible and auditable, not a silent side effect of a join.
+    #   ORPHAN_CUSTOMER            customer_id exists nowhere in bronze_customers
+    #   CUSTOMER_REJECTED_UPSTREAM customer exists in bronze but was rejected by silver_customers
+    con.execute(
+        """
+        CREATE TABLE silver_accounts_rejected AS
+        SELECT
+            a.*,
+            CASE
+                WHEN NOT EXISTS (SELECT 1 FROM bronze_customers b WHERE b.customer_id = a.customer_id)
+                    THEN 'ORPHAN_CUSTOMER'
+                ELSE 'CUSTOMER_REJECTED_UPSTREAM'
+            END                                                     AS reason_code,
+            'silver_accounts'                                       AS rejected_by,
+            current_timestamp::TIMESTAMP                            AS rejected_at  -- naive TS; TIMESTAMPTZ needs pytz to fetch
+        FROM bronze_accounts a
+        ANTI JOIN silver_customers c ON a.customer_id = c.customer_id
+        """
+    )
+
     con.execute(
         """
         CREATE TABLE silver_transactions AS

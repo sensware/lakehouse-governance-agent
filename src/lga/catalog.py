@@ -28,6 +28,7 @@ from .config import DB_PATH
 LINEAGE: dict[str, list[str]] = {
     "silver_customers": ["bronze_customers"],
     "silver_accounts": ["bronze_accounts", "silver_customers"],
+    "silver_accounts_rejected": ["bronze_accounts", "bronze_customers", "silver_customers"],
     "silver_transactions": ["bronze_transactions", "silver_accounts"],
     "gold_customer_360": ["silver_customers", "silver_accounts", "silver_transactions"],
     "gold_monthly_channel_volume": ["silver_transactions"],
@@ -37,6 +38,7 @@ LINEAGE: dict[str, list[str]] = {
 DOMAIN_OWNERS: dict[str, str] = {
     "customers": "Retail Banking — Customer Domain",
     "accounts": "Retail Banking — Deposits Domain",
+    "accounts_rejected": "Retail Banking — Deposits Domain (quarantine)",
     "transactions": "Payments Domain",
     "customer_360": "Customer Analytics (data product)",
     "monthly_channel_volume": "Channel Analytics (data product)",

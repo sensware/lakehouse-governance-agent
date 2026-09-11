@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: DataContract
+metadata:
+  name: silver_customers
+  version: 2.0.0
+  layer: silver
+  domain: Retail Banking — Customer Domain
+  owner: customer-domain@bank.internal
+  status: approved
+  change_log:
+    - version: 2.0.0
+      note: >
+        Baseline. Approved by the Data Architecture Board after the A2A review
+        converged (see docs/05, run 4). Row-conservation invariant added.
+
+description: >
+  Cleansed, deduplicated, quality-filtered customer master. One row per customer_id.
+  Derived from bronze_customers; rows failing dedup or onboarding-age rules are
+  routed to silver_customers_rejected with a reason code.
+
+semantics:
+  grain: one row per customer_id
+  primary_key: [customer_id]
+  freshness: daily batch, aligned to the bronze_customers ingestion job; no in-table load timestamp
+  refresh_cadence: daily
+
+schema:
+  - {name: customer_id,   type: BIGINT,  nullable: false, pii: false, description: "Surrogate identifier; primary key."}
+  - {name: first_name,    type: VARCHAR, nullable: false, pii: true,  description: "Customer given name."}
+  - {name: last_name,     type: VARCHAR, nullable: false, pii: true,  description: "Customer family name."}
+  - {name: email,         type: VARCHAR, nullable: true,  pii: true,  description: "Email; ~10% null, not guaranteed at onboarding."}
+  - {name: date_of_birth, type: DATE,    nullable: true,  pii: true,  description: "DOB; ~4% null. Must be an adult at created_at."}
+  - {name: city,          type: VARCHAR, nullable: true,  pii: false, description: "Registered city; constrained to a known UK set; ~12% null."}
+  - {name: kyc_status,    type: VARCHAR, nullable: true,  pii: false, description: "KYC status; ~25% null pending backfill."}
+  - {name: risk_rating,   type: INTEGER, nullable: true,  pii: false, description: "Internal risk score 1 (low) to 5 (high); ~33% null."}
+  - {name: created_at,    type: DATE,    nullable: false, pii: false, description: "Onboarding date. Observed 2019-01-07 .. 2024-12-29."}
+  - {name: marketing_consent, type: BOOLEAN, nullable: true, pii: false, description: "Customer marketing opt-in flag; ~19% null pending capture."}
+  - {name: customer_segment,  type: VARCHAR, nullable: false, pii: false, description: "Commercial segment; one of RETAIL, PREMIER, BUSINESS."}
+
+quality_rules:
+  - {name: pk_not_null_unique, severity: blocking,
+     assertion: "SELECT count(*) FROM silver_customers WHERE customer_id IS NULL"}
+  - {name: names_present, severity: blocking,
+     assertion: "SELECT count(*) FROM silver_customers WHERE first_name IS NULL OR last_name IS NULL"}
+  - {name: kyc_status_enum, severity: blocking,
+     assertion: "SELECT count(*) FROM silver_customers WHERE kyc_status IS NOT NULL AND kyc_status NOT IN ('VERIFIED','PENDING','REJECTED','EXPIRED')"}
+  - {name: risk_rating_range, severity: blocking,
+     assertion: "SELECT count(*) FROM silver_customers WHERE risk_rating IS NOT NULL AND risk_rating NOT BETWEEN 1 AND 5"}
+  - {name: adult_at_onboarding, severity: blocking,
+     assertion: "SELECT count(*) FROM silver_customers WHERE date_of_birth IS NOT NULL AND date_of_birth > created_at - INTERVAL 18 YEAR"}
+  - {name: row_conservation, severity: blocking,
+     assertion: "SELECT abs((SELECT count(*) FROM bronze_customers) - (SELECT count(*) FROM silver_customers) - (SELECT count(*) FROM silver_customers_rejected))"}
+
+# Every assertion above is written to return 0 when the rule holds.
+
+profile_expectations:
+  row_count_min: 250
+  null_rate_tolerance: 0.06
+  columns:
+    email:         {null_rate: 0.10}
+    date_of_birth: {null_rate: 0.04}
+    city:          {null_rate: 0.12}
+    kyc_status:    {null_rate: 0.25}
+    risk_rating:   {null_rate: 0.33}
+    marketing_consent: {null_rate: 0.19}
+    customer_segment:  {null_rate: 0.0}
+
+lineage:
+  upstreams: [bronze_customers]
+  rejects_to: silver_customers_rejected
+  downstream_consumers: [gold_customer_360]
+
+consumer_guarantees:
+  - "customer_id is stable, unique, non-null, never reused."
+  - "Quarantined rows (silver_customers_rejected) are excluded here; the two tables reconcile row-for-row against bronze_customers."
+  - "kyc_status / risk_rating may be null; consumers must handle nulls, not assume defaults."
+  - "PII columns (first_name, last_name, email, date_of_birth) are role-restricted and masked in non-production."
+  - "Daily refresh; no intraday updates. Breaking schema changes get a version bump + 30-day notice."

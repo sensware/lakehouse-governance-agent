@@ -61,6 +61,12 @@ def search_catalog(query: str, k: int = 3) -> str:
 
 
 @mcp.tool()
+def read_contract(table: str) -> str:
+    """Return the currently approved data contract for a table (contracts/<table>.yml)."""
+    return _run("read_contract", table=table)
+
+
+@mcp.tool()
 def write_artifact(filename: str, content: str) -> str:
     """Save a governance deliverable (.md/.yml/.json/.sql) into artifacts/."""
     return _run("write_artifact", filename=filename, content=content)

@@ -25,6 +25,10 @@ uv run lga agent "Audit bronze_customers for data-quality issues and write a DQ 
                                                   # Phase 3  ReAct agent, watch it work
 uv run lga review silver_customers                # Phase 4  author ⇄ reviewer contract loop
 uv run python -m lga.mcp_server                   # Phase 4  same tools over MCP (stdio)
+
+uv run lga evolve                                 # Phase 5  simulate a pipeline schema change
+uv run lga contract-status silver_customers       # Phase 5  drift vs approved contract (no LLM; exit 1 on drift)
+uv run lga contract-revise silver_customers       # Phase 5  drift → propose → diff → review → promote
 ```
 
 Outputs land in `artifacts/`.
@@ -39,6 +43,7 @@ Outputs land in `artifacts/`.
 | [docs/03-react-agent.md](docs/03-react-agent.md) | ReAct loop, tool design, prompt engineering, memory, ToT/AutoGPT |
 | [docs/04-mcp-and-a2a.md](docs/04-mcp-and-a2a.md) | MCP as a governed tool boundary; author/reviewer A2A protocol |
 | [docs/05-first-run-debrief.md](docs/05-first-run-debrief.md) | What the agents found, what they missed (anchoring), a real pipeline bug they surfaced |
+| [docs/06-contract-change-management.md](docs/06-contract-change-management.md) | Contract drift detection, structured diffs, deterministic version bumps, review-the-diff-not-the-doc |
 
 ## Layout
 
@@ -48,8 +53,12 @@ src/lga/catalog.py        Phase 1 — profiling + catalog cards
 src/lga/rag.py            Phase 2 — embeddings, FAISS, grounded Q&A
 src/lga/tools.py          governance tools, one registry (guardrails live here)
 src/lga/agent.py          Phase 3 — ReAct loop over the tools
-src/lga/a2a.py            Phase 4 — author ⇄ reviewer agents
+src/lga/a2a.py            Phase 4 — author ⇄ reviewer agents; Phase 5 — drift-triggered revision
 src/lga/mcp_server.py     Phase 4 — the same tools over MCP
+src/lga/contract.py       Phase 5 — drift detection + structured contract diff (no LLM)
+data/evolve_lakehouse.py  Phase 5 — simulate a schema change to trigger drift
+contracts/                approved data contracts, versioned (source of truth)
+tests/test_contract.py    offline tests for the diff engine
 docs/                     one concept note per phase
 ```
 

@@ -99,6 +99,16 @@ def write_artifact(filename: str, content: str) -> dict[str, str]:
     return {"written": str(path.relative_to(ARTIFACTS_DIR.parent)), "bytes": len(content)}
 
 
+def read_contract(table: str) -> dict[str, Any]:
+    """Return the currently approved data contract for a table (from contracts/<table>.yml)."""
+    from .contract import contract_path
+
+    p = contract_path(table)
+    if not p.exists():
+        raise ToolError(f"no approved contract for {table}")
+    return {"path": str(p.relative_to(p.parents[1])), "yaml": p.read_text()}
+
+
 def _json_safe(v: Any) -> Any:
     import datetime as _dt
 
@@ -148,6 +158,15 @@ TOOLS: dict[str, dict[str, Any]] = {
                 "column": {"type": "string"},
             },
             "required": ["table", "column"],
+        },
+    },
+    "read_contract": {
+        "fn": read_contract,
+        "description": read_contract.__doc__,
+        "input_schema": {
+            "type": "object",
+            "properties": {"table": {"type": "string"}},
+            "required": ["table"],
         },
     },
     "write_artifact": {

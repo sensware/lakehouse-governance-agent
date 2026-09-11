@@ -656,7 +656,16 @@ reconcilable contract term*. The reviewer stopped arguing about whether rows wer
 and started verifying arithmetic. First number it surfaced: **£4.8M** of account
 balances sitting in quarantine — invisible before.
 
-`docs/05` is the full debrief.
+**Quarantine, don't drop — but also don't stop at quarantine.** The Kimball Null Member
+(docs/10) is the complementary technique: `silver_accounts` now keeps every bronze row,
+repointing unresolvable ones at a sentinel `customer_id = 0`, so that £4.8M shows up as
+a real row in `gold_customer_360` instead of only a quarantine-table total. Implementing
+that repoint surfaced a second, unrelated bug — a join fan-out that had been inflating
+`gold_customer_360.total_balance` ~9x since Phase 0, invisible at normal scale until the
+repoint concentrated enough accounts and transactions onto one row to make it obvious.
+Fixed in the same change.
+
+`docs/05` and `docs/10` are the full debrief.
 
 ---
 
@@ -995,7 +1004,8 @@ Outputs land in `artifacts/`. Approved contracts live in `contracts/`.
 
 ```
 data/
-  build_lakehouse.py      seeded BFSI medallion dataset (deliberate bronze defects)
+  build_lakehouse.py      seeded BFSI medallion dataset (deliberate bronze defects, a
+                          Null Member row + repoint, and the gold fan-out fix — docs/10)
   evolve_lakehouse.py     Phase 5 — simulate a schema change to trigger drift
 contracts/
   silver_customers.yml    approved data contract — versioned source of truth

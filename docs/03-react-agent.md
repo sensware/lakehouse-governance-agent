@@ -28,11 +28,12 @@ routing, retries, and state — useful, but the loop is the thing to understand.
 
 | Principle | How `tools.py` does it |
 |---|---|
-| Few, orthogonal tools | orient (`list_tables`), read (`run_sql`), inspect (`profile_column`), recall (`search_catalog`), act (`write_artifact`) |
+| Few, orthogonal tools | orient (`list_tables`), read (`run_sql`), inspect (`profile_column`), recall (`search_catalog`), check (`read_contract`), act (`write_artifact`) |
 | Descriptions are prompts | Each `description` tells the model *when* to use it, not just what it does |
 | Typed inputs | JSON schema → the model produces valid args; add `strict: true` for guaranteed validation |
 | Errors are observations | `ToolError` text is returned with `is_error=True`; the model self-corrects (e.g. fixes SQL) |
 | Guardrails at the boundary | read-only connection, single statement, allow-listed verbs, row cap, artifact extension allow-list |
+| **Role is a guardrail too** | every tool above also consults `policy.py`'s `Role` (allowed tables, row filters, PII unmask) before touching the lakehouse — the model can ask for anything, but what it *reaches* is bounded by who launched it, not by what it asks (Phase 6, docs/08) |
 | Transport-agnostic | Same registry powers the in-process loop *and* the MCP server |
 
 ## Prompt engineering that matters here

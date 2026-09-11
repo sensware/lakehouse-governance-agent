@@ -33,8 +33,11 @@ You've just chained an external reasoning model to your governed retrieval/actio
 the JD's "define MCPs to chain reasoning, retrieval, and action models".
 
 ### Enterprise framing
-- **Governance boundary.** RBAC, PII masking, audit logging, and rate limits live in the
-  server, applied identically to every client.
+- **Governance boundary.** ABAC and PII masking live in the tool registry (`policy.py`,
+  Phase 6/docs/08) — `mcp_server.py` calls the exact same functions the in-process agent
+  does, so a caller launched with `LGA_ROLE=branch_ops_london` is just as restricted over
+  MCP as it is locally. Audit logging and rate limits are the next layer a real platform
+  would add at this same boundary, not built here.
 - **Discoverability.** `list_tools` is the contract; version it like an API.
 - **Vendors ship these.** Databricks, Snowflake, dbt, Atlan all expose MCP servers — your
   platform's tool surface becomes composable across agents.

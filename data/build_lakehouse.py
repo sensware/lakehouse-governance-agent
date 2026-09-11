@@ -247,12 +247,22 @@ def main() -> None:
         """
     )
 
+    # Null Member repoint (docs/10's "next exercise", now done): every bronze account
+    # loads into silver_accounts — a LEFT JOIN + COALESCE, not the SEMI JOIN this used
+    # to be. An account whose customer_id doesn't resolve in silver_customers (an
+    # orphan, or a customer the age rule rejected) is repointed to customer_id = 0, the
+    # Null Member, instead of being dropped. This is Kimball's textbook combination,
+    # not a replacement for quarantine: the SAME rows are still captured below in
+    # silver_accounts_rejected with a reason code, for audit — they now simply also
+    # appear here, resolved, so their balances aren't silently missing from
+    # gold_customer_360's totals. Deliberately duplicated across the two tables: one is
+    # the fact (always loads, always resolves), the other is the exception log.
     con.execute(
         """
         CREATE TABLE silver_accounts AS
         SELECT
             a.account_id,
-            a.customer_id,
+            coalesce(c.customer_id, 0)                              AS customer_id,
             CASE
                 WHEN upper(trim(a.account_type)) IN ('CURRENT', 'CUR') THEN 'CURRENT'
                 WHEN upper(trim(a.account_type)) IN ('SAVINGS', 'SAV') THEN 'SAVINGS'
@@ -263,12 +273,16 @@ def main() -> None:
             a.opened_date,
             upper(nullif(trim(a.status), ''))                       AS status
         FROM bronze_accounts a
-        SEMI JOIN silver_customers c ON a.customer_id = c.customer_id   -- drop orphans
+        LEFT JOIN silver_customers c ON a.customer_id = c.customer_id
         """
     )
 
-    # Quarantine: every bronze account that did NOT make it to silver, with a reason code.
-    # Rejections must be visible and auditable, not a silent side effect of a join.
+    # Quarantine: every bronze account whose customer_id did NOT resolve to a real
+    # silver_customers row — i.e. every account now repointed to the Null Member above.
+    # This table's job changed with the repoint: it used to be the only record that
+    # these accounts existed at all; now silver_accounts carries them too (against
+    # customer_id = 0), so this is the audit/reason-code log explaining *why* a given
+    # account was repointed, not the sole place it survives.
     #   ORPHAN_CUSTOMER            customer_id exists nowhere in bronze_customers
     #   CUSTOMER_REJECTED_UPSTREAM customer exists in bronze but was rejected by silver_customers
     con.execute(
@@ -307,20 +321,45 @@ def main() -> None:
     )
 
     # ---------------- GOLD ----------------
+    # Aggregate accounts and transactions in their OWN grain first, then join. Doing it
+    # in one pass (customers LEFT JOIN accounts LEFT JOIN transactions, GROUP BY ALL) is
+    # the classic fan-out bug: a customer with 2 accounts and 10 transactions produces up
+    # to 20 joined rows, and sum(a.balance) adds that account's balance in once per
+    # matching transaction row, not once per account. It went unnoticed here because
+    # every real customer has few enough accounts/transactions that the inflation was
+    # never obviously wrong-looking — it took the Null Member repoint (below; docs/10)
+    # concentrating 40 accounts and 259 transactions onto one row to make the error
+    # large enough to be unmissable: total_balance came out ~9x the true sum. Fixed by
+    # pre-aggregating each fact independently before combining, which is what "policy/
+    # correctness before computation" (docs/07) means one layer down from access control.
     con.execute(
         """
         CREATE TABLE gold_customer_360 AS
+        WITH acct_agg AS (
+            SELECT customer_id,
+                   count(DISTINCT account_id) AS n_accounts,
+                   sum(balance)               AS total_balance
+            FROM silver_accounts
+            GROUP BY customer_id
+        ),
+        txn_agg AS (
+            SELECT a.customer_id,
+                   count(t.txn_id)                                          AS n_txns_2024,
+                   sum(CASE WHEN t.amount >= 10000 THEN 1 ELSE 0 END)       AS n_large_txns
+            FROM silver_accounts a
+            JOIN silver_transactions t ON t.account_id = a.account_id
+            GROUP BY a.customer_id
+        )
         SELECT
             c.customer_id,
             c.first_name, c.last_name, c.city, c.kyc_status, c.risk_rating,
-            count(DISTINCT a.account_id)                            AS n_accounts,
-            coalesce(sum(a.balance), 0)                             AS total_balance,
-            count(t.txn_id)                                         AS n_txns_2024,
-            coalesce(sum(CASE WHEN t.amount >= 10000 THEN 1 ELSE 0 END), 0) AS n_large_txns
+            coalesce(aa.n_accounts, 0)      AS n_accounts,
+            coalesce(aa.total_balance, 0)   AS total_balance,
+            coalesce(ta.n_txns_2024, 0)     AS n_txns_2024,
+            coalesce(ta.n_large_txns, 0)    AS n_large_txns
         FROM silver_customers c
-        LEFT JOIN silver_accounts a      ON a.customer_id = c.customer_id
-        LEFT JOIN silver_transactions t  ON t.account_id = a.account_id
-        GROUP BY ALL
+        LEFT JOIN acct_agg aa ON aa.customer_id = c.customer_id
+        LEFT JOIN txn_agg ta  ON ta.customer_id = c.customer_id
         """
     )
 

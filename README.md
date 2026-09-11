@@ -5,10 +5,8 @@ lakehouse (DuckDB) plus a governance agent that catalogs it, answers questions v
 audits data quality with a ReAct tool loop, drafts data contracts, and peer-reviews them
 through an agent-to-agent hand-off — with the tools also served over MCP.
 
-Built to exercise, hands-on, every AI bullet in a *Senior Cloud Data & AI Architect* role:
-RAG · vector DBs · prompt engineering · tool calling · ReAct · agent memory · MCP · A2A ·
-responsible-AI guardrails — on top of medallion / data products / lineage / quality you
-already know.
+Built to implement: RAG · vector DBs · prompt engineering · tool calling · ReAct · agent memory · MCP · A2A ·
+responsible-AI guardrails — on top of medallion / data products / lineage / quality 
 
 ## Quick start
 

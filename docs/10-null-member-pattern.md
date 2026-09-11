@@ -65,25 +65,87 @@ Member's `city` is `NULL`; `NULL = 'London'` is `NULL`, which is falsy in `WHERE
 it's excluded from every branch-scoped view automatically, the same way any other
 non-London row is. No extra rule needed; this is what "the filter is just SQL" buys you.
 
-## What this project deliberately does *not* do with it
+## The repoint, done
 
-The natural next step — repoint the 5 `ORPHAN_CUSTOMER` accounts (or the 35
-`CUSTOMER_REJECTED_UPSTREAM` ones, £4.8M, docs/05) at `customer_id = 0` in
+This was left as "the obvious next exercise" the first time this doc was written —
+repoint the accounts in `silver_accounts_rejected` at `customer_id = 0` in
 `silver_accounts` so their balances aren't silently missing from `gold_customer_360`'s
-totals — is the textbook-correct combination (quarantine *and* Unknown Member, not
-quarantine *or* Unknown Member: Kimball's own guidance is to load the fact against the
-Unknown Member **and** log the exception for follow-up, so aggregates stay complete
-while the anomaly stays visible). It's not done here because it would change
-`silver_accounts`'s row count and every number quoted across docs/05–09 for it. Left as
-the obvious, well-scoped next exercise rather than done quietly in a way that would
-invalidate everything already written about those figures.
+totals. Done. The mechanism: `silver_accounts` changed from a `SEMI JOIN` (keep an
+account only if its customer resolves) to a `LEFT JOIN` + `coalesce(c.customer_id, 0)`
+(keep every account; repoint the unresolvable ones). One line.
+
+```sql
+-- before: drops any account whose customer_id doesn't resolve
+FROM bronze_accounts a
+SEMI JOIN silver_customers c ON a.customer_id = c.customer_id
+
+-- after: keeps every account; unresolved ones repoint to the Null Member
+FROM bronze_accounts a
+LEFT JOIN silver_customers c ON a.customer_id = c.customer_id
+-- customer_id: coalesce(c.customer_id, 0)
+```
+
+This is the textbook-correct combination — quarantine **and** Unknown Member, not
+quarantine **or** Unknown Member. Kimball's own guidance is to load the fact against
+the Unknown Member *and* log the exception for follow-up, so aggregates stay complete
+while the anomaly stays visible. `silver_accounts_rejected` is untouched and still logs
+the same 40 rows with the same reason codes — it stops being "the only place these
+accounts exist" and becomes what it should always have been: an audit log explaining
+*why* a repoint happened, deliberately duplicating rows that also now live in
+`silver_accounts` against `customer_id = 0`.
+
+**Verified, live:**
+
+```
+count(bronze_accounts) = count(silver_accounts)              606 = 606   (was 566 — full coverage now)
+gold_customer_360 WHERE customer_id = 0:
+    n_accounts = 40, total_balance = £4,803,756.99, n_txns_2024 = 259
+sum(silver_accounts.balance) = sum(gold_customer_360.total_balance)      exactly, both £39,265,983.98
+```
+
+`£4,803,756.99` is the exact figure docs/05/06 called "£4.80M... invisible before" —
+now it's a real row in the aggregate table, not just an audit-log total. And
+`branch_ops_london`'s row filters (docs/08) needed **zero changes**: `customer_id = 0`
+has `city IS NULL`, so it was already excluded from every branch-scoped view before this
+exercise even started — confirmation that filtering on the dimension's own attributes,
+not a hardcoded exception list, was the right original design.
+
+### A real, previously-undetected bug this exercise surfaced
+
+Making the repoint visible exposed something unrelated to the Null Member itself:
+`gold_customer_360`'s first draft computed `total_balance` as
+
+```sql
+SELECT customer_id, sum(a.balance) AS total_balance, count(t.txn_id) AS n_txns_2024, ...
+FROM silver_customers c
+LEFT JOIN silver_accounts a     ON a.customer_id = c.customer_id
+LEFT JOIN silver_transactions t ON t.account_id = a.account_id
+GROUP BY ALL
+```
+
+— a classic **join fan-out**: joining accounts to transactions before aggregating means
+a customer with 2 accounts and 10 transactions produces up to 20 rows, and `sum(a.balance)`
+adds that account's balance in once per matching transaction, not once per account.
+This bug has been in `gold_customer_360` since Phase 0. It went unnoticed because every
+real customer has few enough accounts and transactions that the inflation looked like
+plausible variance, not an obvious error — until the Null Member concentrated 40
+accounts and 259 transactions onto one row and `total_balance` came out **~9x** too
+high (£42.9M instead of £4.8M). Fixed by aggregating accounts and transactions
+independently in their own CTEs *before* joining them to the customer. Table-wide,
+`sum(gold_customer_360.total_balance)` now matches `sum(silver_accounts.balance)`
+exactly — it didn't, before.
+
+The lesson is the same one this whole repo keeps re-teaching from different angles
+(docs/05, docs/07): a concentrated edge case is often what makes a systemic bug visible,
+not what causes it.
 
 ## Interview soundbite
 
 > "A quarantine table and a Null Member solve two different problems that look similar.
 > Quarantine says 'this row is wrong, keep it out, log why.' Null Member says 'this row
 > is fine, I just can't resolve its dimension key, and I'd rather have a complete total
-> than a technically-cleaner one.' I built both in the same project: `silver_customers_
-> rejected` for the first, a sentinel `customer_id = 0` row for the second — and I can
-> point to the exact £4.8M figure in this repo's own docs where using the Null Member
-> instead of pure quarantine would have kept that money visible in the aggregate."
+> than a technically-cleaner one.' I built both in the same project, then actually
+> implemented the repoint I'd first left as an exercise — and it exposed a real
+> join-fan-out bug that had been quietly inflating a gold-layer total since the very
+> first phase. The Null Member didn't cause that bug; concentrating 40 accounts onto one
+> row is what finally made a ~9x error impossible to miss."

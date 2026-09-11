@@ -137,6 +137,17 @@ balances — the age-rule fix is quarantining material money, which nobody could
 `silver_customers_rejected` followed, reason codes `DOB_IMPLAUSIBLE` / `DOB_AFTER_ONBOARDING`
 (5) / `MINOR_AT_ONBOARDING` (10). Reconciles: 300 distinct bronze = 285 silver + 15 rejected.
 
+**Later update — the £4.80M stopped being invisible.** Quarantine made the money
+*auditable*; it still wasn't in any total. docs/10 implements the obvious next step (the
+Kimball Null/Unknown Member): `silver_accounts` now keeps every bronze row and repoints
+unresolvable ones at a sentinel `customer_id = 0`, so `gold_customer_360` carries an
+"Unknown" row with the real total — verified to the penny (£4,803,756.99) against
+`silver_accounts_rejected`'s own sum. Making that repoint visible also surfaced a second,
+unrelated bug: `gold_customer_360`'s `total_balance` had a join fan-out (accounts joined
+to transactions before aggregating) that had been inflating every customer's total since
+Phase 0 — invisible at normal scale, ~9x wrong once 40 accounts and 259 transactions
+landed on one row. Both fixed in the same change; see docs/10 for the before/after SQL.
+
 ### Run 3 — the review after the customer quarantine table
 
 **Trace:** draft → REVISE → revise → **APPROVE**. 2 reviews, 1 revision, 40 tool calls, 0 errors
@@ -265,3 +276,7 @@ Noted for a future phase.
   caught it by re-fetching the system of record instead of trusting the draft's own
   description of its status — the same control that catches a wrong number also catches
   a process violation, because both come from 'verify, don't trust'."
+- "Implementing the Null Member repoint I'd deliberately deferred surfaced a real,
+  unrelated bug — a join fan-out in a gold-layer aggregate, live since Phase 0, invisible
+  at normal scale. A concentrated edge case is often what makes a systemic bug visible,
+  not what causes it."

@@ -163,6 +163,34 @@ side-effect* into a *declared, reconcilable contract term*. The reviewer stopped
 whether rows were lost and started verifying an arithmetic identity — which is the whole point
 of a data contract.
 
+### Run 4 — `DUPLICATE_ROW` code closes the last gap
+
+Run 3's remaining finding: the 9 exact-duplicate bronze rows were collapsed by `SELECT
+DISTINCT` with no audit trail. Fix: the reject table now runs
+`row_number() OVER (PARTITION BY <all columns>)` and quarantines every `_rn > 1` row as
+`DUPLICATE_ROW`, alongside the age-rule rejects. The invariant strengthened from a *distinct-id*
+count to **row conservation**:
+
+```
+count(bronze_customers) = count(silver_customers) + count(silver_customers_rejected)
+        309             =           285           +              24
+                                                     (9 DUPLICATE_ROW + 10 MINOR + 5 DOB_AFTER)
+```
+
+**Trace:** draft → **APPROVE**, first review, 0 revisions, 13 tool calls. The reviewer
+re-derived `309 = 285 + 24`, matched all three reason-code counts, ran all quality rules, found
+"no discrepancies". The convergence curve across the four runs: *never → 3 reviews → 1 revision
+→ 0 revisions*. Each governance artifact retired a class of finding.
+
+### Limitation this surfaced: the A2A loop has no artifact memory
+
+Each `lga review` regenerates the contract from scratch — the author never sees the previous
+version. So improvements aren't cumulative (run 3's GDPR retention/erasure clause didn't carry
+into run 4's draft), and whether a given concern resurfaces depends on reviewer sampling. A
+production version would: load the existing contract as the author's starting point, diff
+proposed changes, and require the reviewer to check the diff — not re-review the whole document.
+Noted for a future phase.
+
 ## Cost & observability notes
 
 - Opus 5 with adaptive thinking: the agent audit was ~5 model calls; the A2A run ~5 agent runs

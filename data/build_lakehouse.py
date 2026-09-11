@@ -187,28 +187,45 @@ def main() -> None:
         """
     )
 
-    # Quarantine: bronze customers that did NOT reach silver, with a reason code.
-    # The rejection rule now lives in *data*, not just in this script — so a data
-    # contract / catalog can declare it and consumers can reconcile the row counts.
+    # Quarantine: every bronze_customers ROW that did NOT reach silver, with a reason code.
+    # The rejection rules now live in *data*, not just in this script — so a data contract /
+    # catalog can declare them and consumers can reconcile row-for-row:
+    #     count(bronze_customers) = count(silver_customers) + count(silver_customers_rejected)
+    #   DUPLICATE_ROW         2nd+ copy of a byte-identical bronze row (collapsed by dedup)
     #   DOB_IMPLAUSIBLE       date_of_birth before 1910
     #   DOB_AFTER_ONBOARDING  born after the account was created (impossible)
     #   MINOR_AT_ONBOARDING   under 18 at created_at (KYC exception)
     con.execute(
         """
         CREATE TABLE silver_customers_rejected AS
-        WITH deduped AS (SELECT DISTINCT * FROM bronze_customers)
-        SELECT
-            d.*,
-            CASE
-                WHEN d.date_of_birth < DATE '1910-01-01'            THEN 'DOB_IMPLAUSIBLE'
-                WHEN d.date_of_birth > d.created_at                 THEN 'DOB_AFTER_ONBOARDING'
-                WHEN d.date_of_birth > d.created_at - INTERVAL 18 YEAR THEN 'MINOR_AT_ONBOARDING'
-                ELSE 'UNKNOWN'
-            END                                                    AS reason_code,
-            'silver_customers'                                      AS rejected_by,
-            current_timestamp::TIMESTAMP                            AS rejected_at
-        FROM deduped d
-        ANTI JOIN silver_customers s ON d.customer_id = s.customer_id
+        WITH ranked AS (
+            SELECT *, row_number() OVER (
+                PARTITION BY customer_id, first_name, last_name, email, date_of_birth,
+                             city, kyc_status, risk_rating, created_at
+                ORDER BY customer_id
+            ) AS _rn
+            FROM bronze_customers
+        ),
+        duplicate_rows AS (
+            SELECT * EXCLUDE (_rn), 'DUPLICATE_ROW' AS reason_code FROM ranked WHERE _rn > 1
+        ),
+        survivors AS (SELECT * EXCLUDE (_rn) FROM ranked WHERE _rn = 1),
+        rule_rejects AS (
+            SELECT s.*,
+                CASE
+                    WHEN s.date_of_birth < DATE '1910-01-01'              THEN 'DOB_IMPLAUSIBLE'
+                    WHEN s.date_of_birth > s.created_at                   THEN 'DOB_AFTER_ONBOARDING'
+                    WHEN s.date_of_birth > s.created_at - INTERVAL 18 YEAR THEN 'MINOR_AT_ONBOARDING'
+                    ELSE 'UNKNOWN'
+                END AS reason_code
+            FROM survivors s
+            ANTI JOIN silver_customers sc ON s.customer_id = sc.customer_id
+        )
+        SELECT *, 'silver_customers' AS rejected_by, current_timestamp::TIMESTAMP AS rejected_at
+        FROM duplicate_rows
+        UNION ALL BY NAME
+        SELECT *, 'silver_customers' AS rejected_by, current_timestamp::TIMESTAMP AS rejected_at
+        FROM rule_rejects
         """
     )
 

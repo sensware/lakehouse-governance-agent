@@ -1,24 +1,32 @@
-## Governance Review — `silver_customers`
+## Governance Review — `silver_customers` Data Contract
 
-**Verified against data:**
+**Verification performed:**
 
-- **PK uniqueness/not-null** ✅ Confirmed: 285 rows, 285 distinct `customer_id`, 0 nulls. Claim is accurate.
-- **Quality rules** ✅ All rules currently pass with zero violations on the live table: `kyc_status` enum, `risk_rating` 1–5, DOB plausibility, no-minors-at-onboarding, `city` known-set, `email` format all return 0 bad rows.
-- **Known data issue percentages** ✅ Match profiling exactly: email null 10.2% (~10%), kyc_status null 24.9% (~25%), risk_rating null 32.6% (~33%), city null 11.9% (~12%).
-- **PII flags** ✅ `first_name`, `last_name`, `email`, `date_of_birth` correctly flagged PII; `customer_id`/`city`/`kyc_status`/`risk_rating` reasonably left unflagged.
-- **Downstream lineage** ✅ `gold_customer_360` catalog card confirms `silver_customers` as an upstream source, consistent with contract.
+1. **Lineage integrity** — `bronze_customers` (309 rows) = `silver_customers` (285 rows) + `silver_customers_rejected` (24 rows), exactly balancing. Rejection reason codes (`MINOR_AT_ONBOARDING`: 10, `DOB_AFTER_ONBOARDING`: 5, `DUPLICATE_ROW`: 9 = 24 total) match the contract's stated quarantine reasons. Downstream `gold_customer_360` correctly sources from `silver_customers` (plus `silver_accounts`/`silver_transactions`, consistent with a 360 view). Lineage claims are accurate.
 
-**Issues found:**
+2. **Primary key** — `customer_id`: 285 rows, 285 distinct, 0 nulls → truly unique and non-null. Claim verified.
 
-1. **Lineage relationship is mischaracterized.** The contract states `bronze_customers → silver_customers` is "1:1 filtered." In reality, `bronze_customers` has 309 rows but only 300 distinct `customer_id`s (9 customer_ids have exact full-row duplicates, e.g. customer_id 5, 45, 103). These duplicates are silently collapsed to one row in silver (309 → 300 distinct → 285 silver + 15 rejected = 300). This is **deduplication**, not a 1:1 filter, and it is not reflected in `silver_customers_rejected` (whose only reason codes are `MINOR_AT_ONBOARDING`/`DOB_AFTER_ONBOARDING` — no dedup-related reason code exists). Dropped duplicate rows have no audit trail, which contradicts the consumer guarantee that "rows failing quality rules... are available in `silver_customers_rejected` for audit."
-2. **`freshness_check` rule is not implementable as written.** It references `table_load_timestamp within SLA`, which is not a column in the schema and has no defined source — this assertion cannot actually be evaluated/enforced as SQL.
-3. **No explicit dedup quality rule** is codified despite the top-level description claiming records are "deduplicated." Given exact duplicates exist upstream, a `no_exact_duplicate_rows` (or similar) rule should be added and its outcome logged/audited.
-4. **GDPR/KYC documentation gap**: for a table carrying DOB, name, and email PII, the contract lacks any statement of retention period, lawful basis, or data-subject-rights (erasure/rectification) handling — only masking/entitlement is mentioned. Recommend adding a retention/erasure clause given GDPR obligations on customer PII.
+3. **Quality rules** — Ran all ten assertions directly against `silver_customers`:
+   - PK not-null/unique ✅
+   - names required ✅ (0 violations)
+   - created_at populated/not future ✅
+   - kyc_status enum ✅
+   - risk_rating 1–5 ✅
+   - adult_at_onboarding ✅ (0 violations)
+   - dob_before_onboarding ✅ (0 violations)
+   - email format ✅
+   - known_city ✅ (0 violations)
+   - no duplicate (first_name,last_name,dob) ✅ (0 violations)
+   All ten rules are satisfied by the actual data — none are aspirational only.
 
-None of these are data-correctness failures (the live data actually satisfies all stated quality rules), but the lineage description and freshness rule are factually/operationally inaccurate and should be corrected before sign-off.
+4. **Null-rate claims** — email 10.2% (~10% ✓), date_of_birth 3.9% (~4% ✓), city 11.9% (~12% ✓), kyc_status 24.9% (~25% ✓), risk_rating 32.6% (~33% ✓). All match catalog stats closely.
 
-VERDICT: REVISE
-- Correct lineage relationship from "1:1 filtered" to accurately describe deduplication of exact-duplicate bronze rows (N:1 dedup + filter), and route/tag dropped duplicates to `silver_customers_rejected` with a distinct reason code for audit completeness.
-- Fix or remove the `freshness_check` rule — it references a non-existent `table_load_timestamp` column and cannot be executed as specified.
-- Add an explicit deduplication quality rule (e.g., assert no exact-duplicate rows per `customer_id` survive silently) to match the "deduplicated" claim in the description.
-- Add a GDPR retention/erasure policy statement for the PII columns (first_name, last_name, email, date_of_birth) to strengthen compliance posture beyond masking/entitlement language.
+5. **City normalization** — Bronze contains messy variants (`"  London "`, `"LONDON"`, null); Silver contains exactly the 6 clean enum values used in the `known_city` rule, confirming the cleansing transformation is real and effective, not just asserted.
+
+6. **PII flagging** — first_name, last_name, email, date_of_birth are correctly flagged `pii: true`; customer_id (surrogate key), city, kyc_status, risk_rating are correctly left unflagged. This aligns with GDPR expectations (direct/near-direct identifiers flagged) and KYC sensitivity is addressed via access-control language in consumer guarantees, though kyc_status/risk_rating being financial-sensitive (not strictly PII) is a reasonable classification.
+
+7. **Consumer guarantees** — Masking/tokenization requirement for PII in non-prod, stable surrogate keys, and quarantine exclusions are all consistent with observed data behavior.
+
+No discrepancies were found between the contract's claims and the actual lakehouse data.
+
+VERDICT: APPROVE

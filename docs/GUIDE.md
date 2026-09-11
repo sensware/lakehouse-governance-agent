@@ -549,9 +549,11 @@ is correct regardless of what the rest of the query does to it.
 ### Live proof
 
 ```
-LGA_ROLE=branch_ops_london  list_tables            -> 4 tables (bronze_* gone)
+LGA_ROLE=branch_ops_london  list_tables            -> 5 tables (bronze_* gone)
                             run_sql city breakdown -> {'London': 95}  only
                             run_sql on silver_transactions -> row-filtered through 2 nested joins
+                            run_sql on silver_accounts_rejected -> 3 rows, filtered against bronze_customers
+                                                                    (silver_customers can't work here — see docs/08)
                             profile_column email    -> still masked
                             run_sql on bronze_customers -> ToolError: not permitted
                             search_catalog "customer data quality" -> no bronze_* cards
@@ -565,9 +567,17 @@ The first version let an unknown-role `PolicyError` leak past several tools that
 `policy.current_role()` directly, outside the block translating policy violations into
 `ToolError` — exactly the "policy exists but isn't enforced at the boundary" failure
 mode this whole phase is about, this time in the guardrail itself. Fixed with one
-wrapper (`tools._role()`) every tool now goes through; `tests/test_policy.py` (18
+wrapper (`tools._role()`) every tool now goes through; `tests/test_policy.py` (25
 offline tests) covers the role table, the regex rewrite (including alias handling), and
 the env-var edge cases including this exact one.
+
+A second, subtler bug the same way: extending the role to the `silver_accounts_rejected`
+quarantine table by copying the `silver_accounts` filter pattern ran without error and
+silently returned zero rows for *every* city — that table is built by anti-joining
+against `silver_customers`, so a filter checking `silver_customers` can never match.
+The fix reads the customer's city from `bronze_customers` instead, live-verified against
+two real rejected customers. Full write-up in docs/08 — the mechanism was never wrong;
+where the filter looked was.
 
 ### Honest limits
 

@@ -66,7 +66,13 @@ ROLES: dict[str, Role] = {
     "branch_ops_london": Role(
         "branch_ops_london",
         allowed_tables=frozenset(
-            {"silver_customers", "silver_accounts", "silver_transactions", "gold_customer_360"}
+            {
+                "silver_customers",
+                "silver_accounts",
+                "silver_transactions",
+                "silver_accounts_rejected",
+                "gold_customer_360",
+            }
         ),
         row_filters={
             "silver_customers": "city = 'London'",
@@ -77,6 +83,18 @@ ROLES: dict[str, Role] = {
             "silver_transactions": (
                 "account_id IN (SELECT account_id FROM silver_accounts WHERE customer_id IN "
                 "(SELECT customer_id FROM silver_customers WHERE city = 'London'))"
+            ),
+            # Quarantined accounts. NOTE: filtering by silver_customers.city here (the
+            # same expression as silver_accounts, above) would be a silent no-op — by
+            # construction, silver_accounts_rejected = bronze_accounts ANTI JOIN
+            # silver_customers, so no row's customer_id ever matches a silver_customers
+            # row, for ANY city. Confirmed live: two customers rejected on the age rule
+            # (ids 46, 183) have bronze city "  London " and were invisible under the
+            # silver-based filter. The audit trail lives in bronze; the filter has to
+            # look there too, normalised the same way the silver build normalises it.
+            "silver_accounts_rejected": (
+                "customer_id IN (SELECT customer_id FROM bronze_customers "
+                "WHERE upper(trim(city)) = 'LONDON')"
             ),
         },
     ),

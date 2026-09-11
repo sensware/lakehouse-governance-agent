@@ -9,7 +9,7 @@
 
 ## 0. How to read this
 
-The project is built in **six phases**. Each phase takes one cluster of the job
+The project is built in **seven phases**. Each phase takes one cluster of the job
 description and implements it against a problem you already understand — a bank's
 medallion lakehouse — so the unfamiliar AI concepts land on familiar ground.
 
@@ -21,10 +21,13 @@ medallion lakehouse — so the unfamiliar AI concepts land on familiar ground.
 | 3 | ReAct governance agent with tools | Tool calling, the agent loop, prompt engineering, agent memory, ReAct vs ToT vs AutoGPT | LLMs, prompt engineering, ReAct, Tree of Thought, tool calling, agent memory |
 | 4 | MCP server + author/reviewer A2A loop | Model Context Protocol, multi-agent orchestration, separation-of-duties as a control | MCP, A2A orchestration, agent frameworks, responsible AI |
 | 5 | Contract drift detection + change management | Data contracts, semantic diff, semver, deterministic versioning | Data contracts, lineage consensus, architectural guardrails |
+| 6 | Attribute-based access control (row filters + column masking, one role, every tool) | ABAC, row-level security, data masking, policy-before-computation | Privacy/security/regulation compliance, responsible AI |
 
 Everything runs locally. Every command is `uv run lga <something>`. The whole
-thing is ~1,500 lines of Python plus seven concept notes (`docs/00`–`06`) and this
-guide, which ties them together.
+thing is ~1,900 lines of Python plus nine concept notes (`docs/00`–`09`) and this
+guide, which ties them together. `docs/07` and `docs/09` map three vendor articles
+(two Databricks, one Snowflake) to this repo line-by-line — and found real gaps,
+one of which (`docs/08`) is now Phase 6.
 
 ---
 
@@ -144,7 +147,7 @@ pipeline dropping rows because of them. A clean dataset would teach nothing.
 
 Some defects were **planted**; a few **emerged** from the random generator by accident
 (one email shared by three customer IDs; a customer born after their account opened).
-The agent found both kinds — see §10.
+The agent found both kinds — see §11.
 
 ---
 
@@ -286,8 +289,8 @@ printed as a panel — that trace *is* your audit log.
 |---|---|---|
 | `list_tables` | catalog overview | — |
 | `search_catalog` | the RAG retriever, as a tool | — |
-| `run_sql` | one read-only statement on the lakehouse | regex-gated to `SELECT/WITH/EXPLAIN/…`, single statement, 200-row cap, DB opened `read_only` |
-| `profile_column` | full column profile | — |
+| `run_sql` | one read-only statement on the lakehouse | regex-gated to `SELECT/WITH/EXPLAIN/…`, single statement, 200-row cap, DB opened `read_only`; **row/table access enforced per role** (§10, docs/08); still returns raw PII for the `dq_auditor` role only — the DQ-audit use case needs real values (§11, §12, docs/07) |
+| `profile_column` | full column profile | **PII columns masked at the source** (`catalog.py::_mask`) — a name/email preview, not the value |
 | `read_contract` | the approved contract for a table | — |
 | `write_artifact` | save a deliverable to `artifacts/` | extension whitelist, filename sandboxed |
 
@@ -483,7 +486,101 @@ notification side-effect).
 
 ---
 
-## 10. What the agents got right, and wrong — the four review runs
+## 10. Phase 6 — attribute-based access control (ABAC)
+
+**File:** `src/lga/policy.py` · **Wired into:** every tool in `tools.py`
+**Commands:** `LGA_ROLE=branch_ops_london uv run lga agent "..."`, or `uv run lga --role branch_ops_london <cmd>`
+
+This phase exists because writing docs/07 (§ below) found a real gap and this fixes it:
+PII masking was in place, but nothing restricted *which tables or rows* a caller could
+reach, in either `run_sql` or the RAG retriever. Two Databricks articles and one
+Snowflake guide each name this same gap under different vocabulary — "ABAC across SQL
+and vector search", "row access policies + masking policies". `docs/08` is the full
+write-up; here's the concept.
+
+### Access control, decoded
+
+**RBAC (role-based access control)** grants permissions to a role, then assigns users
+to roles — coarse ("can this role touch this table"). **ABAC (attribute-based access
+control)** evaluates a policy against *attributes* of the request — who's asking, which
+row, which column — at query time, so one table can serve many audiences without
+duplicating it. A **row access policy** (Snowflake's term) / **row filter** (Databricks'
+term) is ABAC applied per-row; a **masking policy** is ABAC applied per-column.
+
+### The shape here
+
+```python
+# policy.py
+Role(name, allowed_tables, row_filters: dict[table, SQL predicate], unmask_pii: bool)
+
+ROLES = {
+    "analyst":           Role("analyst"),                      # broad, masked — status quo
+    "dq_auditor":        Role("dq_auditor", unmask_pii=True),  # Phase 3's DQ persona
+    "branch_ops_london": Role("branch_ops_london",
+                               allowed_tables={"silver_customers", "silver_accounts", ...},
+                               row_filters={"silver_customers": "city = 'London'", ...}),
+}
+```
+
+`LGA_ROLE` — an environment variable an **operator** sets, never a tool argument the
+model could pick for itself — selects one. Every tool that reaches the lakehouse
+(`run_sql`, `profile_column`, `list_tables`, `search_catalog`, `read_contract`) consults
+the same `Role` object, so a restricted role sees the same tables and the same rows no
+matter which tool it uses to get there.
+
+### Row filtering by query rewrite, not by post-processing
+
+The mechanism (`policy._substitute_table`) replaces a table reference with a
+pre-filtered subquery **before** the rest of the SQL runs:
+
+```sql
+-- the agent's query
+SELECT count(*) FROM silver_customers
+
+-- what actually executes, for LGA_ROLE=branch_ops_london
+SELECT count(*) FROM (SELECT * FROM silver_customers WHERE city = 'London') AS silver_customers
+```
+
+This is deliberate: filtering the *output* of a query that already aggregated
+disallowed rows is exactly the Databricks article's "cannot be redacted after the fact"
+failure (docs/07). Filtering the *input* — before any join or aggregate touches it —
+is correct regardless of what the rest of the query does to it.
+
+### Live proof
+
+```
+LGA_ROLE=branch_ops_london  list_tables            -> 4 tables (bronze_* gone)
+                            run_sql city breakdown -> {'London': 95}  only
+                            run_sql on silver_transactions -> row-filtered through 2 nested joins
+                            profile_column email    -> still masked
+                            run_sql on bronze_customers -> ToolError: not permitted
+                            search_catalog "customer data quality" -> no bronze_* cards
+LGA_ROLE=dq_auditor         profile_column email    -> real values (the deliberate exception)
+LGA_ROLE=not_a_real_role    list_tables             -> ToolError: Unknown LGA_ROLE
+```
+
+### A bug caught by testing the control, not just building it
+
+The first version let an unknown-role `PolicyError` leak past several tools that called
+`policy.current_role()` directly, outside the block translating policy violations into
+`ToolError` — exactly the "policy exists but isn't enforced at the boundary" failure
+mode this whole phase is about, this time in the guardrail itself. Fixed with one
+wrapper (`tools._role()`) every tool now goes through; `tests/test_policy.py` (18
+offline tests) covers the role table, the regex rewrite (including alias handling), and
+the env-var edge cases including this exact one.
+
+### Honest limits
+
+Enforcement is application code, not a query engine — a second tool reading the raw
+DuckDB file bypasses it; the table-matching is regex against a small known vocabulary,
+not a real SQL parser; `LGA_ROLE` is one coarse setting per process, not a per-user
+lookup. Snowflake's row access policies and Databricks' Unity Catalog row filters can't
+be evaded by rephrasing a query — this project's, in principle, could be. Stated
+plainly in docs/08 and docs/09, not glossed over.
+
+---
+
+## 11. What the agents got right, and wrong — the four review runs
 
 The `silver_customers` contract was reviewed four times as the underlying pipeline and
 data improved. The convergence curve is the story:
@@ -541,7 +638,7 @@ balances sitting in quarantine — invisible before.
 
 ---
 
-## 11. Cross-cutting concerns
+## 12. Cross-cutting concerns
 
 ### Responsible AI (JD: "drives adoption of responsible AI frameworks")
 
@@ -549,17 +646,20 @@ balances sitting in quarantine — invisible before.
 |---|---|
 | Hallucinated columns / stats | Grounding contract in RAG; tools return real data; reviewer re-derives every number |
 | Unsafe actions | Read-only SQL tool (regex gate, single statement, row cap, `read_only` connection); write tool sandboxed to `artifacts/` |
-| PII in prompts | PII flagged at the catalog layer; a real deployment masks at the tool boundary before results reach the model |
+| PII in prompts | Column masking at the one source every tool reads from (`catalog.py::_mask`, docs/07) *and*, as of Phase 6, table/row access control (`policy.py`, docs/08) enforced identically across `run_sql`, `profile_column`, `list_tables`, `search_catalog`, `read_contract`. `run_sql` stays unmasked for the `dq_auditor` role only, on purpose — the audit use case needs real values. |
 | Unchecked output | Every deliverable is a **draft**; the reviewer agent is a control; humans approve promotion to `contracts/` |
 | Non-determinism | Every tool call logged with its result; models pinned via `ANTHROPIC_MODEL`; Phase 5 versioning is deterministic |
 | One agent, no oversight | Separation of duties: author ≠ reviewer, different prompts, different memory |
+| Over-privileged agent | Phase 6's ABAC: an agent launched with `LGA_ROLE=branch_ops_london` cannot discover, query, or retrieve-via-RAG a table or row outside its role, regardless of what the model asks for |
 
 ### Security & privacy
 
 - Secrets in `.env` (git-ignored), never in code or prompts.
 - The SQL guardrail is defence-in-depth: even a prompt-injected "DROP TABLE" is rejected
   by the regex *and* the read-only connection.
-- MCP gives you *one* place to enforce RBAC, masking, and audit for every AI consumer.
+- MCP gives you *one* place to enforce RBAC/ABAC, masking, and audit for every AI
+  consumer — Phase 6's `policy.py` is a from-scratch version of exactly that, wired
+  into this project's own MCP server.
 
 ### Observability & cost
 
@@ -579,7 +679,7 @@ The pieces that would be CI/CD jobs:
 
 ---
 
-## 12. Mapping to a real cloud platform
+## 13. Mapping to a real cloud platform
 
 | This repo | Databricks | Snowflake | AWS / Azure / GCP |
 |---|---|---|---|
@@ -589,22 +689,37 @@ The pieces that would be CI/CD jobs:
 | Quality rules | Lakehouse Monitoring, DLT expectations, Great Expectations | Data Metric Functions; Great Expectations / Soda | Deequ / Glue DQ / Dataplex DQ |
 | `fastembed` | Foundation Model APIs (BGE, GTE) | Cortex `EMBED_TEXT` | Bedrock Titan / Azure OpenAI / Vertex embeddings |
 | FAISS | Databricks Vector Search | Cortex Search | OpenSearch k-NN / AI Search / Vertex Vector Search |
-| Claude via `anthropic` | Model Serving; Claude on Databricks | Cortex `COMPLETE` (Claude) | Bedrock / Azure AI Foundry / Vertex |
-| `agent.py` ReAct loop | Mosaic AI Agent Framework | Cortex Agents | Bedrock Agents / Azure AI Agent Service / Vertex Agent Builder |
-| `mcp_server.py` | Databricks ships MCP servers for UC/Genie | Snowflake ships an MCP server | Bedrock AgentCore Gateway (MCP) |
+| Claude via `anthropic` (called directly — outside any perimeter, see docs/07) | **Model Serving** / Foundation Model APIs run inference *inside* the security perimeter | Cortex `COMPLETE` (Claude) | Bedrock / Azure AI Foundry / Vertex |
+| `agent.py` ReAct loop | **Agent Bricks** / Mosaic AI Agent Framework | Cortex Agents | Bedrock Agents / Azure AI Agent Service / Vertex Agent Builder |
+| in-process agent memory (`messages` list, ephemeral) | **Lakebase** — managed Postgres, transactional, shared across agents | Snowflake tables + Cortex | Bedrock Agents memory / DynamoDB |
+| `mcp_server.py` + `.mcp.json` (one tool surface, no central policy layer) | **Unity AI Gateway** — platform-wide ALLOW/DENY/ASK before execution; **Omnigent** routes coding agents (incl. Claude Code) through it | Snowflake ships an MCP server | Bedrock AgentCore Gateway (MCP) |
 | `a2a.py` | LangGraph / CrewAI on Databricks | — | Bedrock multi-agent collaboration; Google A2A |
 | `contracts/` + drift | Unity Catalog + DLT expectations + CI | Horizon + DMFs + CI | data contract tooling + CI |
+| `rich` panel trace (printed, not persisted) | **MLflow 3** — full request/tool-call tracing, auditable | Cortex observability | CloudWatch/App Insights/Cloud Logging + eval tooling |
+| hand-written `DOMAIN_OWNERS` dict | **Genie** / Genie Ontology — auto-derived business context | Horizon semantic views / **Object Tagging** | Dataplex business glossary |
+| `policy.py::Role.row_filters` (SQL text substitution, Phase 6) | **Unity Catalog row filters** — engine-enforced, can't be evaded by rephrasing | **Row Access Policies** — `CREATE ROW ACCESS POLICY … AS (col) RETURNS BOOLEAN -> ...`, engine-enforced | Lake Formation row-level permissions / Dataplex data policies |
+| `catalog.py::_mask` + `Role.unmask_pii` (Phase 6) | Unity Catalog column masking | **Dynamic Data Masking** — `CREATE MASKING POLICY …`, multiple patterns (full/partial/tokenize) | Azure/GCP column-level masking policies |
 
 The interview answer to *"we use Snowflake and Databricks, not DuckDB"*: **"The
 patterns are identical — swap the connection string and push the profiling SQL down to
-the warehouse. Here's the mapping table."**
+the warehouse. Here's the mapping table."** For the deeper argument behind several of
+these rows — why Databricks says agents belong *inside* the platform, why Snowflake
+pairs row/masking policies with a semantic layer, and the real ABAC gap that exposed
+in this project's own tool layer (now Phase 6) — see
+[docs/07-databricks-governance.md](07-databricks-governance.md),
+[docs/08-abac-row-level-policy.md](08-abac-row-level-policy.md), and
+[docs/09-snowflake-governance.md](09-snowflake-governance.md).
 
 ---
 
-## 13. Glossary
+## 14. Glossary
 
 **A2A (Agent-to-Agent)** — multiple specialised agents collaborating via typed
 messages instead of one agent in one context. Here: author ⇄ reviewer.
+
+**ABAC (attribute-based access control)** — a policy evaluated against attributes of
+the request (caller, row, column) at query time, rather than a coarse role check.
+Row filters and column masking are both ABAC. `policy.py`, docs/08.
 
 **Agent** — an LLM in a loop with tools that decides when to stop.
 
@@ -667,6 +782,11 @@ to LLM apps; stdio or HTTP transport. "USB-C for AI tools."
 
 **MLOps** — CI/CD, versioning, monitoring, and evaluation for ML/LLM systems.
 
+**Masking policy** — a rule that transforms a column's value at query time based on
+the caller's role/attributes (full mask, partial mask, tokenization), while the
+underlying stored value is untouched. Snowflake's term; `catalog.py::_mask` +
+`Role.unmask_pii` is a from-scratch version of it. docs/08, docs/09.
+
 **PII** — personally identifiable information; drives masking and access control.
 
 **Profiling** — measuring a column's actual contents: nulls, cardinality, range,
@@ -681,6 +801,11 @@ the drop is auditable and the row counts reconcile.
 **RAG (retrieval-augmented generation)** — retrieve the relevant slice of a corpus,
 put it in the prompt, generate a grounded answer.
 
+**RBAC (role-based access control)** — permissions granted to a role, users assigned
+to roles; coarser than ABAC (a role either can or can't touch a table, with no
+per-row/per-column nuance). `policy.py`'s `allowed_tables` is RBAC; its `row_filters`
+and masking layer on top of that are what make the whole thing ABAC. docs/08.
+
 **ReAct** — Reason + Act: interleave model reasoning with tool calls, feeding
 observations back.
 
@@ -689,6 +814,13 @@ retries.
 
 **Responsible AI** — the framework of controls (grounding, guardrails, separation of
 duties, human approval, audit) that makes an AI system safe to deploy.
+
+**Row access policy** / **row-level security (RLS)** — a filter, keyed on the
+caller's role/attributes, applied to a table's rows before the rest of a query runs —
+so one table serves many audiences without duplicating it, and an aggregate can never
+have used a row the caller wasn't entitled to see. Snowflake's and Databricks' term;
+`policy.py::Role.row_filters` + `_substitute_table` is a from-scratch version, by SQL
+text substitution instead of an engine hook. docs/08, docs/09.
 
 **Semantic versioning (semver)** — `MAJOR.MINOR.PATCH`; here the bump is derived from
 the change classification.
@@ -711,7 +843,7 @@ fast (FAISS, Pinecone, Weaviate, pgvector).
 
 ---
 
-## 14. Interview question bank
+## 15. Interview question bank
 
 **"How would you apply GenAI to data governance?"**
 RAG over live catalog metadata for discovery; a ReAct agent that generates
@@ -726,9 +858,22 @@ is expensive and lossy. Re-index in CI after each pipeline run.
 **"What are the failure modes and how do you mitigate them?"**
 Hallucination → grounding contract + tools that return real data + a reviewer that
 re-derives numbers. Unsafe actions → read-only tool surface, sandboxed writes.
-PII leakage → mask at the tool boundary. Non-determinism → log every tool call, pin
-models, make versioning deterministic. Anchoring → enumerate hypotheses before
+PII leakage → mask at the tool boundary, at the one place every consumer reads from —
+found a real instance of this missing in `profile_column`, fixed it in `catalog.py`,
+and *deliberately* left the raw-access tool (`run_sql`) unmasked because the DQ-audit
+use case genuinely needs real values (docs/07). Non-determinism → log every tool call,
+pin models, make versioning deterministic. Anchoring → enumerate hypotheses before
 querying, HITL on critical findings.
+
+**"Databricks argues agents must move to the data, not the other way round — thoughts?"**
+Agreed, and this project is a working demonstration of the exact failure it describes:
+by design, the LLM calls sit outside any perimeter (straight to Anthropic's API), and
+writing up the mapping surfaced a real bug — a catalog `is_pii` flag that was metadata
+only, never enforced, so `profile_column` leaked raw names and emails. Fixed at the one
+place every consumer reads from. The deeper point stands, though: that's an
+application-level patch, not platform enforcement — a second tool reading the same
+DuckDB file bypasses it entirely, which is exactly why Unity Catalog enforces ACLs in
+the engine instead of in each caller. Full mapping in docs/07.
 
 **"Why MCP instead of just calling functions?"**
 It decouples the tool implementation from the model and the harness. One governed,
@@ -753,11 +898,23 @@ non-zero to block the CI merge.
 The patterns are identical. `information_schema` queries, window functions, and
 `ANTI JOIN` run unchanged on Snowflake and Spark SQL; push profiling down to the
 warehouse. The embedding model, vector store, and LLM are each one swap. [Show the
-mapping table in §12.]
+mapping table in §13.]
+
+**"How would you implement row-level security and column masking for an AI agent?"**
+Both need to apply *before* computation, not after — you can't redact an aggregate
+once it's used a forbidden row. I built this: a `Role` (allowed tables, row filters,
+a masking flag) consulted by every tool that reaches the data, so a restricted role
+sees the same tables and rows through SQL, a profiling tool, and a RAG retriever
+alike. Row filtering works by substituting a table reference with a pre-filtered
+subquery before the rest of the query runs. On Snowflake that's a native row access
+policy plus a masking policy, engine-enforced; mine is application-level and, unlike
+theirs, could in principle be evaded by a query my regex-based table matching doesn't
+recognize. I'd lead with that limit unprompted — it's the honest difference between a
+demo and a platform feature.
 
 ---
 
-## 15. Command reference
+## 16. Command reference
 
 ```bash
 # Phase 0 — data
@@ -793,7 +950,7 @@ Outputs land in `artifacts/`. Approved contracts live in `contracts/`.
 
 ---
 
-## 16. What's deliberately not built (and what you'd add)
+## 17. What's deliberately not built (and what you'd add)
 
 | Gap | What a real platform does |
 |---|---|
@@ -805,10 +962,14 @@ Outputs land in `artifacts/`. Approved contracts live in `contracts/`.
 | Real drift source | A scheduled profiler writing snapshots to a table, not a toy `evolve` script |
 | Eval harness | Golden Q&A for the RAG; labelled drift cases for the diff engine; track regression |
 | Cost/latency budgets | Per-run token accounting; a cheaper model for retrieval synthesis |
+| Named data-product ownership | `contracts/*.yml`'s `owner` is a team alias, not an accountable individual with a "you fix the catalog" workflow (docs/07, Part 2) |
+| Persisted certification history | `contract-status` recomputes drift live; it doesn't store a queryable scorecard over time the way Unity Catalog's AI Certification / Snowflake DMF event tables do |
+| Engine-enforced ABAC | ~~Row-level policy~~ **built in Phase 6** (`policy.py`, docs/08) — but as application code, not a query-engine feature. A second tool reading the raw DuckDB file bypasses it entirely; Snowflake row access/masking policies and Unity Catalog row filters can't be bypassed that way. Table-matching is regex against a known vocabulary, not a real SQL parser. |
+| Per-user identity behind a role | `LGA_ROLE` is one coarse setting per process; a real system resolves role from an authenticated session/token per call, not an env var |
 
 ---
 
-## 17. Repo map
+## 18. Repo map
 
 ```
 data/
@@ -818,20 +979,25 @@ contracts/
   silver_customers.yml    approved data contract — versioned source of truth
 src/lga/
   config.py               paths, model id, .env loading
-  catalog.py              Phase 1 — profiling + "catalog cards" + declared lineage
+  catalog.py              Phase 1 — profiling + "catalog cards" + declared lineage + PII masking
   rag.py                  Phase 2 — fastembed + FAISS + grounded Q&A
   tools.py                the governance tool registry + guardrails (one definition)
+  policy.py               Phase 6 — ABAC: role, table access, row filters, masking (no LLM)
   agent.py                Phase 3 — the ReAct loop
   a2a.py                  Phase 4 — author ⇄ reviewer; Phase 5 — drift-triggered revision
   mcp_server.py           Phase 4 — the same tools over MCP (stdio)
   contract.py             Phase 5 — drift detection + structured contract diff (no LLM)
-  cli.py                  `lga` subcommands
+  cli.py                  `lga` subcommands (`--role` sets LGA_ROLE for the invocation)
 tests/
   test_contract.py        offline tests for the diff engine
+  test_policy.py          offline tests for ABAC (roles, row-filter rewrite, env handling)
 docs/
   00-architecture.md      the picture + the cloud-platform mapping
   01..06                  one concept note per phase
   05-first-run-debrief.md what the agents found / missed across four review runs
+  07-databricks-governance.md  two Databricks articles mapped to this repo (found the PII gap)
+  08-abac-row-level-policy.md  Phase 6 write-up: roles, row filters, masking, honest limits
+  09-snowflake-governance.md   Snowflake's guide mapped to this repo (verifies Phase 6)
   GUIDE.md                this document
 .mcp.json                 registers the MCP server for Claude Code in this folder
 ```

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "lakehouse-governance": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "lga.mcp_server"]
+    }
+  }
+}

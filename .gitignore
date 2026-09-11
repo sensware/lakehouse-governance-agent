@@ -1,0 +1,21 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets
+.env
+
+# Generated data + indexes + agent output
+data/lakehouse.duckdb
+artifacts/catalog_index/
+
+# macOS / tooling
+.DS_Store
+.pytest_cache/

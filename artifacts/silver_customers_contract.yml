@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: DataContract
+metadata:
+  name: silver_customers
+  layer: silver
+  domain: "Retail Banking — Customer Domain"
+  owner: "Retail Banking Customer Domain team (Data Product Owner: Customer Domain Lead)"
+  description: >
+    Cleansed, deduplicated, and validated customer master records derived from
+    bronze_customers. Serves as the trusted customer reference for downstream
+    analytics and 360 views. Rows failing quality checks are routed to
+    silver_customers_rejected.
+
+lineage:
+  upstreams:
+    - table: bronze_customers
+      relationship: "1:1 cleansing/validation pass, invalid rows quarantined to silver_customers_rejected"
+  downstreams:
+    - gold_customer_360
+    - silver_customers_rejected (quarantine sibling, same run)
+
+semantics:
+  grain: "One row per customer (customer_id)"
+  primary_key: [customer_id]
+  update_pattern: "Batch upsert on each ingestion run from bronze_customers"
+  freshness_sla: "Refreshed daily by 06:00 UTC; max staleness 24h from bronze_customers landing"
+  retention: "Full history retained; no soft deletes observed to date"
+
+schema:
+  - column: customer_id
+    type: BIGINT
+    nullable: false
+    pii: false
+    description: "Unique surrogate identifier for a customer; primary key."
+  - column: first_name
+    type: VARCHAR
+    nullable: false
+    pii: true
+    description: "Customer given name."
+  - column: last_name
+    type: VARCHAR
+    nullable: false
+    pii: true
+    description: "Customer family name."
+  - column: email
+    type: VARCHAR
+    nullable: true
+    pii: true
+    description: "Customer email address; ~10% null, not guaranteed populated at onboarding."
+  - column: date_of_birth
+    type: DATE
+    nullable: true
+    pii: true
+    description: "Customer date of birth; ~4% null. Must correspond to an adult at created_at (see quality rules)."
+  - column: city
+    type: VARCHAR
+    nullable: true
+    pii: false
+    description: "Customer's registered city; constrained to a known set of UK cities. ~12% null."
+  - column: kyc_status
+    type: VARCHAR
+    nullable: true
+    pii: false
+    description: "KYC verification status: VERIFIED, PENDING, or REJECTED. ~25% null pending backfill."
+  - column: risk_rating
+    type: INTEGER
+    nullable: true
+    pii: false
+    description: "Internal risk score, 1 (lowest) to 5 (highest). ~33% null where not yet assessed."
+  - column: created_at
+    type: DATE
+    nullable: false
+    pii: false
+    description: "Date the customer record was created/onboarded. Range observed 2019-01-07 to 2024-12-29."
+
+quality_rules:
+  - name: pk_not_null_unique
+    description: "customer_id must be non-null and unique"
+    assertion: "COUNT(*) = COUNT(DISTINCT customer_id) AND COUNT(*) = COUNT(customer_id)"
+  - name: names_required
+    description: "first_name and last_name must never be null/empty"
+    assertion: "first_name IS NOT NULL AND TRIM(first_name) <> '' AND last_name IS NOT NULL AND TRIM(last_name) <> ''"
+  - name: created_at_required
+    description: "created_at must be populated and not in the future"
+    assertion: "created_at IS NOT NULL AND created_at <= CURRENT_DATE"
+  - name: valid_kyc_status
+    description: "kyc_status, when present, must be one of the allowed enum values"
+    assertion: "kyc_status IS NULL OR kyc_status IN ('VERIFIED','PENDING','REJECTED')"
+  - name: valid_risk_rating
+    description: "risk_rating, when present, must be within 1-5"
+    assertion: "risk_rating IS NULL OR risk_rating BETWEEN 1 AND 5"
+  - name: adult_at_onboarding
+    description: "Customer must be at least 18 years old as of created_at (minors quarantined upstream)"
+    assertion: "date_of_birth IS NULL OR date_of_birth <= created_at - INTERVAL '18 years'"
+  - name: dob_before_onboarding
+    description: "date_of_birth must precede created_at"
+    assertion: "date_of_birth IS NULL OR date_of_birth < created_at"
+  - name: email_format
+    description: "email, when present, should match a basic email pattern"
+    assertion: "email IS NULL OR email LIKE '%_@__%.__%'"
+  - name: known_city
+    description: "city, when present, must be one of the recognized branch cities"
+    assertion: "city IS NULL OR city IN ('London','Manchester','Birmingham','Leeds','Bristol','Glasgow')"
+  - name: no_duplicate_customers
+    description: "No duplicate (first_name, last_name, date_of_birth) combination indicating unresolved dedup"
+    assertion: "COUNT(*) OVER (PARTITION BY first_name, last_name, date_of_birth) = 1"
+
+consumer_guarantees:
+  - "Schema is backward compatible; new nullable columns may be added without notice, breaking changes require version bump and 30-day deprecation notice."
+  - "customer_id values are stable and never reused once assigned."
+  - "Rows quarantined to silver_customers_rejected (e.g. minors at onboarding, DOB after onboarding, duplicate rows) are excluded from this table."
+  - "kyc_status and risk_rating may be null where not yet assessed; consumers must handle nulls, not assume defaults."
+  - "PII columns (first_name, last_name, email, date_of_birth) require access via approved roles only and must be masked/tokenized in non-production environments."
+  - "Table is refreshed daily; consumers should not expect intraday updates."
+  - "Historical values are not corrected retroactively except for confirmed data quality fixes, which will be communicated via change log."

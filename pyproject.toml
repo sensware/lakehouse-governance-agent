@@ -1,0 +1,35 @@
+[project]
+name = "lakehouse-governance-agent"
+version = "0.1.0"
+description = "A governance agent that applies GenAI to a medallion-architecture lakehouse: cataloging, profiling, RAG, data-quality rules, and data contracts via a ReAct agent + MCP tools."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.1",
+    "anthropic>=0.40",
+    "faiss-cpu>=1.9",
+    "fastembed>=0.4",
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "python-dotenv>=1.0",
+    "rich>=13.9",
+    "pydantic>=2.9",
+    "mcp>=1.2",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+lga = "lga.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.12,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "lga"
+module-root = "src"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

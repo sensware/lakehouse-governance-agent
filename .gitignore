@@ -15,3 +15,7 @@ wheels/
 # Generated data + indexes + agent output
 data/lakehouse.duckdb
 artifacts/catalog_index/
+
+# macOS / tooling
+.DS_Store
+.pytest_cache/

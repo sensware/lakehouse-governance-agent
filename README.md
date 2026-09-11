@@ -37,6 +37,7 @@ Outputs land in `artifacts/`.
 
 | Doc | Concept |
 |---|---|
+| **[docs/GUIDE.md](docs/GUIDE.md)** | **Start here — the complete walkthrough: every phase, every concept, glossary, interview Q&A** |
 | [docs/00-architecture.md](docs/00-architecture.md) | The whole picture, and the map to Databricks / Snowflake / JD bullets |
 | [docs/01-catalog-and-profiling.md](docs/01-catalog-and-profiling.md) | Metadata + profiling, designed for LLM consumption |
 | [docs/02-rag.md](docs/02-rag.md) | RAG, embeddings, FAISS, grounding, retrieval telemetry |

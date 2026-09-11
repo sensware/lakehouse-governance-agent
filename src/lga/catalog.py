@@ -105,6 +105,20 @@ def _domain_of(table: str) -> str:
     return DOMAIN_OWNERS.get(stem, "Unassigned")
 
 
+def _mask(v: Any) -> Any:
+    """Redact a PII value while keeping enough shape to sanity-check format/plausibility
+    (an email still looks like an email; a name is still one letter + stars) without
+    exposing the real value. See docs/07 — this closes a real leak: is_pii was metadata
+    only, never enforced, so profile_column/catalog cards returned raw PII."""
+    if v is None:
+        return None
+    s = str(v)
+    if "@" in s:
+        local, _, domain = s.partition("@")
+        return f"{local[:1]}***@{domain}"
+    return s[0] + "*" * (len(s) - 1) if len(s) > 1 else "*"
+
+
 def profile_column(con: duckdb.DuckDBPyConnection, table: str, col: str, dtype: str) -> ColumnProfile:
     row_count = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0] or 1
     nulls, distincts = con.execute(
@@ -136,6 +150,10 @@ def profile_column(con: duckdb.DuckDBPyConnection, table: str, col: str, dtype: 
     elif temporal:
         mn, mx = con.execute(f'SELECT min("{col}"), max("{col}") FROM {table}').fetchone()
         prof.min, prof.max = str(mn), str(mx)
+
+    if prof.is_pii:
+        prof.sample_values = [_mask(v) for v in prof.sample_values]
+        prof.min, prof.max = _mask(prof.min), _mask(prof.max)
     return prof
 
 

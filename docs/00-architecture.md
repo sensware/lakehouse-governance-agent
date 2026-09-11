@@ -40,16 +40,24 @@ land on familiar ground.
 
 | Layer | Here | On Databricks / Snowflake | JD bullet |
 |---|---|---|---|
-| Storage + medallion | DuckDB tables with `bronze_/silver_/gold_` prefixes | Delta/Iceberg tables in three schemas or catalogs; Unity Catalog / Snowflake DBs | Medallion, data products |
-| Metadata + profiling | `catalog.py` queries `information_schema` + aggregates | Unity Catalog system tables, Snowflake `ACCOUNT_USAGE`, dbt `manifest.json`, Great Expectations / Soda | Quality, lineage, metadata standards |
-| Lineage | Declared dict `LINEAGE` | Unity Catalog lineage API, OpenLineage events, Snowflake `OBJECT_DEPENDENCIES`; column-level via sqlglot/dbt | Lineage, data contracts |
-| Embeddings | `fastembed` (ONNX, local, free) | Voyage / OpenAI `text-embedding-3` / Bedrock Titan / Databricks FMAPI | Vector DBs |
-| Vector store | FAISS `IndexFlatIP` file | Pinecone, Weaviate, Databricks Vector Search, Snowflake Cortex Search | FAISS/Pinecone/Weaviate |
-| LLM | Anthropic Claude (Messages API, tool use) | Same, or via Bedrock/Vertex; Databricks Model Serving | Claude, OpenAI APIs |
-| Agent loop | Hand-written ReAct in `agent.py` | LangGraph / CrewAI / AutoGen; Databricks Mosaic Agent Framework | ReAct, LangChain, CrewAI |
-| Tool protocol | `tools.py` registry + `mcp_server.py` | MCP servers in front of Unity Catalog, Snowflake, Airflow; Databricks/Snowflake both ship MCP servers | MCP |
+| Storage + medallion | DuckDB tables with `bronze_/silver_/gold_` prefixes | Delta/Iceberg tables in three schemas or catalogs; **Unity Catalog** / Snowflake DBs | Medallion, data products |
+| Metadata + profiling | `catalog.py` queries `information_schema` + aggregates | **Unity Catalog** system tables + **Lakehouse Monitoring**, Snowflake `ACCOUNT_USAGE`, dbt `manifest.json`, Great Expectations / Soda | Quality, lineage, metadata standards |
+| Business context (domain/owner) | hand-written `DOMAIN_OWNERS` dict | **Genie** / **Genie Ontology** — auto-derived from tables, queries, dashboards | Metadata standards |
+| Lineage | Declared dict `LINEAGE` | **Unity Catalog** lineage API, OpenLineage events, Snowflake `OBJECT_DEPENDENCIES`; column-level via sqlglot/dbt | Lineage, data contracts |
+| Embeddings | `fastembed` (ONNX, local, free) | Voyage / OpenAI `text-embedding-3` / Bedrock Titan / **Databricks Foundation Model APIs** | Vector DBs |
+| Vector store | FAISS `IndexFlatIP` file | Pinecone, Weaviate, **Databricks AI/Vector Search** (Delta-backed, ACL-aware), Snowflake Cortex Search | FAISS/Pinecone/Weaviate |
+| LLM | Anthropic Claude (Messages API, tool use) — called directly, outside any perimeter | Same, or via Bedrock/Vertex; **Databricks Model Serving** runs it *inside* the security perimeter | Claude, OpenAI APIs |
+| Agent loop | Hand-written ReAct in `agent.py` | LangGraph / CrewAI / AutoGen; **Databricks Agent Bricks** / Mosaic AI Agent Framework | ReAct, LangChain, CrewAI |
+| Agent memory/state | in-process `messages` list, dies with the run | **Lakebase** — managed Postgres, transactional, shared across agents | Agent memory |
+| Tool protocol | `tools.py` registry + `mcp_server.py` | MCP servers in front of Unity Catalog, Snowflake, Airflow; **Unity AI Gateway** as the platform-wide control plane, **Omnigent** for coding agents specifically | MCP |
 | Multi-agent | `a2a.py` author/reviewer hand-off | A2A protocol (Google), CrewAI crews, LangGraph multi-actor graphs | A2A orchestration |
-| Guardrails | read-only SQL, single statement, row cap, artifact path sandbox | Central tool gateway with RBAC, PII masking, audit log, prompt-injection filters | Responsible AI, guardrails |
+| Observability | `rich` panel trace, printed, not persisted | **MLflow 3** — full request/tool-call tracing, auditable, queryable | MLOps |
+| Guardrails | read-only SQL, single statement, row cap, PII masking in `profile_column`, artifact path sandbox | **Unity AI Gateway** — ALLOW/DENY/ASK enforced *before* execution, platform-wide, not per-tool | Responsible AI, guardrails |
+
+**Deeper dive:** [docs/07-data-native-agents.md](07-data-native-agents.md) works through
+Databricks' [*data-native agents*](https://www.databricks.com/blog/data-native-ai-agents-why-agents-must-move-your-data)
+argument line by line against this repo — including a real PII-masking gap it found and
+a fix that landed in `catalog.py`.
 
 ## The architect's questions this project prepares you to answer
 

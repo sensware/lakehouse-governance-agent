@@ -286,8 +286,8 @@ printed as a panel — that trace *is* your audit log.
 |---|---|---|
 | `list_tables` | catalog overview | — |
 | `search_catalog` | the RAG retriever, as a tool | — |
-| `run_sql` | one read-only statement on the lakehouse | regex-gated to `SELECT/WITH/EXPLAIN/…`, single statement, 200-row cap, DB opened `read_only` |
-| `profile_column` | full column profile | — |
+| `run_sql` | one read-only statement on the lakehouse | regex-gated to `SELECT/WITH/EXPLAIN/…`, single statement, 200-row cap, DB opened `read_only`; **intentionally still returns raw PII** — the DQ-audit use case needs real values (§10, §11, docs/07) |
+| `profile_column` | full column profile | **PII columns masked at the source** (`catalog.py::_mask`) — a name/email preview, not the value |
 | `read_contract` | the approved contract for a table | — |
 | `write_artifact` | save a deliverable to `artifacts/` | extension whitelist, filename sandboxed |
 
@@ -549,7 +549,7 @@ balances sitting in quarantine — invisible before.
 |---|---|
 | Hallucinated columns / stats | Grounding contract in RAG; tools return real data; reviewer re-derives every number |
 | Unsafe actions | Read-only SQL tool (regex gate, single statement, row cap, `read_only` connection); write tool sandboxed to `artifacts/` |
-| PII in prompts | PII flagged at the catalog layer; a real deployment masks at the tool boundary before results reach the model |
+| PII in prompts | Flagged at the catalog layer AND enforced: `profile_column`/catalog cards mask PII at the source (`catalog.py::_mask`) — found missing, fixed, see docs/07. `run_sql` stays unmasked on purpose (the DQ-audit use case needs real values); no row-level policy anywhere yet. |
 | Unchecked output | Every deliverable is a **draft**; the reviewer agent is a control; humans approve promotion to `contracts/` |
 | Non-determinism | Every tool call logged with its result; models pinned via `ANTHROPIC_MODEL`; Phase 5 versioning is deterministic |
 | One agent, no oversight | Separation of duties: author ≠ reviewer, different prompts, different memory |
@@ -589,15 +589,21 @@ The pieces that would be CI/CD jobs:
 | Quality rules | Lakehouse Monitoring, DLT expectations, Great Expectations | Data Metric Functions; Great Expectations / Soda | Deequ / Glue DQ / Dataplex DQ |
 | `fastembed` | Foundation Model APIs (BGE, GTE) | Cortex `EMBED_TEXT` | Bedrock Titan / Azure OpenAI / Vertex embeddings |
 | FAISS | Databricks Vector Search | Cortex Search | OpenSearch k-NN / AI Search / Vertex Vector Search |
-| Claude via `anthropic` | Model Serving; Claude on Databricks | Cortex `COMPLETE` (Claude) | Bedrock / Azure AI Foundry / Vertex |
-| `agent.py` ReAct loop | Mosaic AI Agent Framework | Cortex Agents | Bedrock Agents / Azure AI Agent Service / Vertex Agent Builder |
-| `mcp_server.py` | Databricks ships MCP servers for UC/Genie | Snowflake ships an MCP server | Bedrock AgentCore Gateway (MCP) |
+| Claude via `anthropic` (called directly — outside any perimeter, see docs/07) | **Model Serving** / Foundation Model APIs run inference *inside* the security perimeter | Cortex `COMPLETE` (Claude) | Bedrock / Azure AI Foundry / Vertex |
+| `agent.py` ReAct loop | **Agent Bricks** / Mosaic AI Agent Framework | Cortex Agents | Bedrock Agents / Azure AI Agent Service / Vertex Agent Builder |
+| in-process agent memory (`messages` list, ephemeral) | **Lakebase** — managed Postgres, transactional, shared across agents | Snowflake tables + Cortex | Bedrock Agents memory / DynamoDB |
+| `mcp_server.py` + `.mcp.json` (one tool surface, no central policy layer) | **Unity AI Gateway** — platform-wide ALLOW/DENY/ASK before execution; **Omnigent** routes coding agents (incl. Claude Code) through it | Snowflake ships an MCP server | Bedrock AgentCore Gateway (MCP) |
 | `a2a.py` | LangGraph / CrewAI on Databricks | — | Bedrock multi-agent collaboration; Google A2A |
 | `contracts/` + drift | Unity Catalog + DLT expectations + CI | Horizon + DMFs + CI | data contract tooling + CI |
+| `rich` panel trace (printed, not persisted) | **MLflow 3** — full request/tool-call tracing, auditable | Cortex observability | CloudWatch/App Insights/Cloud Logging + eval tooling |
+| hand-written `DOMAIN_OWNERS` dict | **Genie** / Genie Ontology — auto-derived business context | Horizon semantic views | Dataplex business glossary |
 
 The interview answer to *"we use Snowflake and Databricks, not DuckDB"*: **"The
 patterns are identical — swap the connection string and push the profiling SQL down to
-the warehouse. Here's the mapping table."**
+the warehouse. Here's the mapping table."** For the deeper argument behind several of
+these rows — why Databricks says agents belong *inside* the platform, and the real gap
+it exposed in this project's own tool layer — see
+[docs/07-data-native-agents.md](07-data-native-agents.md).
 
 ---
 
@@ -726,9 +732,22 @@ is expensive and lossy. Re-index in CI after each pipeline run.
 **"What are the failure modes and how do you mitigate them?"**
 Hallucination → grounding contract + tools that return real data + a reviewer that
 re-derives numbers. Unsafe actions → read-only tool surface, sandboxed writes.
-PII leakage → mask at the tool boundary. Non-determinism → log every tool call, pin
-models, make versioning deterministic. Anchoring → enumerate hypotheses before
+PII leakage → mask at the tool boundary, at the one place every consumer reads from —
+found a real instance of this missing in `profile_column`, fixed it in `catalog.py`,
+and *deliberately* left the raw-access tool (`run_sql`) unmasked because the DQ-audit
+use case genuinely needs real values (docs/07). Non-determinism → log every tool call,
+pin models, make versioning deterministic. Anchoring → enumerate hypotheses before
 querying, HITL on critical findings.
+
+**"Databricks argues agents must move to the data, not the other way round — thoughts?"**
+Agreed, and this project is a working demonstration of the exact failure it describes:
+by design, the LLM calls sit outside any perimeter (straight to Anthropic's API), and
+writing up the mapping surfaced a real bug — a catalog `is_pii` flag that was metadata
+only, never enforced, so `profile_column` leaked raw names and emails. Fixed at the one
+place every consumer reads from. The deeper point stands, though: that's an
+application-level patch, not platform enforcement — a second tool reading the same
+DuckDB file bypasses it entirely, which is exactly why Unity Catalog enforces ACLs in
+the engine instead of in each caller. Full mapping in docs/07.
 
 **"Why MCP instead of just calling functions?"**
 It decouples the tool implementation from the model and the harness. One governed,
@@ -805,6 +824,9 @@ Outputs land in `artifacts/`. Approved contracts live in `contracts/`.
 | Real drift source | A scheduled profiler writing snapshots to a table, not a toy `evolve` script |
 | Eval harness | Golden Q&A for the RAG; labelled drift cases for the diff engine; track regression |
 | Cost/latency budgets | Per-run token accounting; a cheaper model for retrieval synthesis |
+| **Row-level policy (ABAC)** | Named by *both* Databricks articles in docs/07 independently: `run_sql` and the FAISS index enforce no row-level policy at all today. A real platform applies the same ABAC to SQL and vector search — "can this caller see this row" answered once, enforced everywhere. |
+| Named data-product ownership | `contracts/*.yml`'s `owner` is a team alias, not an accountable individual with a "you fix the catalog" workflow (docs/07, Part 2) |
+| Persisted certification history | `contract-status` recomputes drift live; it doesn't store a queryable scorecard over time the way Unity Catalog's AI Certification does |
 
 ---
 

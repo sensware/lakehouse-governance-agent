@@ -43,6 +43,7 @@ Outputs land in `artifacts/`.
 | [docs/04-mcp-and-a2a.md](docs/04-mcp-and-a2a.md) | MCP as a governed tool boundary; author/reviewer A2A protocol |
 | [docs/05-first-run-debrief.md](docs/05-first-run-debrief.md) | What the agents found, what they missed (anchoring), a real pipeline bug they surfaced |
 | [docs/06-contract-change-management.md](docs/06-contract-change-management.md) | Contract drift detection, structured diffs, deterministic version bumps, review-the-diff-not-the-doc |
+| [docs/07-data-native-agents.md](docs/07-data-native-agents.md) | Two Databricks articles mapped line-by-line to this repo — and a real PII-masking bug they surfaced and fixed |
 
 ## Layout
 

@@ -24,10 +24,12 @@ medallion lakehouse — so the unfamiliar AI concepts land on familiar ground.
 | 6 | Attribute-based access control (row filters + column masking, one role, every tool) | ABAC, row-level security, data masking, policy-before-computation | Privacy/security/regulation compliance, responsible AI |
 
 Everything runs locally. Every command is `uv run lga <something>`. The whole
-thing is ~1,900 lines of Python plus nine concept notes (`docs/00`–`09`) and this
+thing is ~2,000 lines of Python plus eleven concept notes (`docs/00`–`10`) and this
 guide, which ties them together. `docs/07` and `docs/09` map three vendor articles
 (two Databricks, one Snowflake) to this repo line-by-line — and found real gaps,
-one of which (`docs/08`) is now Phase 6.
+one of which (`docs/08`) is now Phase 6. `docs/10` is a classical Kimball dimensional-
+modeling pattern (the Null/Unknown Member) that sits alongside, not inside, the six AI
+phases — the JD's data-platform half meeting its AI half in the same repo.
 
 ---
 
@@ -549,11 +551,13 @@ is correct regardless of what the rest of the query does to it.
 ### Live proof
 
 ```
-LGA_ROLE=branch_ops_london  list_tables            -> 5 tables (bronze_* gone)
+LGA_ROLE=branch_ops_london  list_tables            -> 6 tables (bronze_* gone)
                             run_sql city breakdown -> {'London': 95}  only
                             run_sql on silver_transactions -> row-filtered through 2 nested joins
                             run_sql on silver_accounts_rejected -> 3 rows, filtered against bronze_customers
                                                                     (silver_customers can't work here — see docs/08)
+                            run_sql on silver_customers_rejected -> 4 rows, filtered on its own city column
+                            run_sql on silver_customers WHERE customer_id=0 -> 0 rows (Null Member excluded, docs/10)
                             profile_column email    -> still masked
                             run_sql on bronze_customers -> ToolError: not permitted
                             search_catalog "customer data quality" -> no bronze_* cards
@@ -1008,6 +1012,7 @@ docs/
   07-databricks-governance.md  two Databricks articles mapped to this repo (found the PII gap)
   08-abac-row-level-policy.md  Phase 6 write-up: roles, row filters, masking, honest limits
   09-snowflake-governance.md   Snowflake's guide mapped to this repo (verifies Phase 6)
+  10-null-member-pattern.md    Kimball's Null/Unknown Member — quarantine's complement, not its replacement
   GUIDE.md                this document
 .mcp.json                 registers the MCP server for Claude Code in this folder
 ```

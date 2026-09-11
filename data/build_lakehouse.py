@@ -187,6 +187,24 @@ def main() -> None:
         """
     )
 
+    # The Null Member / Unknown Member (Kimball dimensional modeling): a designated,
+    # always-present sentinel row in the dimension, surrogate key 0, so a fact row that
+    # can't be resolved to a real customer has somewhere *safe* to point — instead of a
+    # database NULL (which silently breaks joins, GROUP BY, and equality filters) or
+    # being dropped outright. This is deliberately NOT sourced from bronze_customers —
+    # it's synthetic, present in every load, and excluded from the bronze<->silver
+    # row-conservation check (see contracts/silver_customers.yml's row_conservation
+    # rule and unknown_member_present, its companion). docs/10 has the full writeup,
+    # including why this project still quarantines (docs/05/06) rather than repointing
+    # existing fact rows here — the two techniques solve different problems and this
+    # repo demonstrates both rather than picking one.
+    con.execute(
+        """
+        INSERT INTO silver_customers VALUES
+        (0, 'Unknown', 'Member', NULL, NULL, NULL, NULL, NULL, DATE '1900-01-01')
+        """
+    )
+
     # Quarantine: every bronze_customers ROW that did NOT reach silver, with a reason code.
     # The rejection rules now live in *data*, not just in this script — so a data contract /
     # catalog can declare them and consumers can reconcile row-for-row:

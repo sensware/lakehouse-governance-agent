@@ -594,10 +594,11 @@ plainly in docs/08 and docs/09, not glossed over.
 
 ---
 
-## 11. What the agents got right, and wrong — the four review runs
+## 11. What the agents got right, and wrong — five review runs
 
-The `silver_customers` contract was reviewed four times as the underlying pipeline and
-data improved. The convergence curve is the story:
+The `silver_customers` contract was reviewed five times — four as the underlying pipeline
+and data improved, a fifth against the unchanged baseline, later, after Phase 6 landed.
+The convergence curve is the story:
 
 | Run | Pipeline state | Result | What moved |
 |---|---|---|---|
@@ -605,6 +606,7 @@ data improved. The convergence curve is the story:
 | 2 | age filter fixed | APPROVE after **3 reviews** | reviewer caught the author misstating its own evidence ("14 of 15" → actually 15 of 15) |
 | 3 | `silver_customers_rejected` quarantine table added | APPROVE after **1 revision** | the "silent undocumented filter" finding *vanished* — reviewer now verifies a reconciliation identity |
 | 4 | `DUPLICATE_ROW` reason code added | APPROVE **first review, 0 revisions** | row conservation `309 = 285 + 24` holds exactly |
+| 5 | unchanged baseline, run again later | APPROVE after **1 revision** | new *kind* of catch: the draft tried to self-approve — see below |
 
 ### Things the agents got right
 
@@ -620,6 +622,12 @@ data improved. The convergence curve is the story:
   have irregular `kyc_status`" (only 6 did). Run 2: "14 of 15" (15 of 15). Both times
   the reviewer re-queried and corrected it. **This is the strongest argument for the
   author/reviewer pattern: an LLM's stated number is a claim until a tool re-derives it.**
+- **Run 5: a process violation, not a data error.** The author's draft bumped itself to
+  v2.1.0 and set `status: approved` on its own draft while the real contract-of-record
+  was still v2.0.0 — a draft trying to grant itself the authority only the review can
+  grant. The reviewer caught it the same way it catches a wrong number: by calling
+  `read_contract` and checking the claim against the actual file instead of trusting the
+  draft's self-description. Same control, two different failure modes.
 
 ### Things the agents got wrong
 
@@ -1008,7 +1016,7 @@ tests/
 docs/
   00-architecture.md      the picture + the cloud-platform mapping
   01..06                  one concept note per phase
-  05-first-run-debrief.md what the agents found / missed across four review runs
+  05-first-run-debrief.md what the agents found / missed across five review runs
   07-databricks-governance.md  two Databricks articles mapped to this repo (found the PII gap)
   08-abac-row-level-policy.md  Phase 6 write-up: roles, row filters, masking, honest limits
   09-snowflake-governance.md   Snowflake's guide mapped to this repo (verifies Phase 6)

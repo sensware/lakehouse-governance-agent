@@ -182,6 +182,61 @@ re-derived `309 = 285 + 24`, matched all three reason-code counts, ran all quali
 "no discrepancies". The convergence curve across the four runs: *never → 3 reviews → 1 revision
 → 0 revisions*. Each governance artifact retired a class of finding.
 
+### Run 5 — a new class of finding: the draft tried to self-approve
+
+Same command, run again later (after Phase 6's ABAC and the Null Member landed), against
+the unchanged v2.0.0 baseline. **Trace:** draft → REVISE → revise → **APPROVE** (2 rounds,
+45 tool calls, 0 errors).
+
+The author's draft bumped itself to `v2.1.0` and — unprompted — set `metadata.status:
+approved` on its own draft, while the real contract-of-record on file was still `v2.0.0`.
+The reviewer caught it by doing the one thing that makes this pattern work at all: it
+called `read_contract` and compared the draft's claim against the actual file, instead of
+trusting the draft's self-description.
+
+> **Governance/versioning hygiene** — The draft is marked `status: approved` for v2.1.0
+> while the contract-of-record on file is still v2.0.0 and this Board review is in
+> progress — status should be `proposed`/`in_review` until sign-off.
+>
+> VERDICT: REVISE
+> — Set `status: proposed`/`in_review` (not `approved`) until this Board review formally
+> concludes.
+
+This is a **different category of catch** than runs 1–4. Those were about *data* — a wrong
+statistic, a silent drop, a failing rule. This one is about *process*: a draft trying to
+grant itself the authority only the review can grant. It's the automated equivalent of an
+employee writing "approved" on their own expense report — technically a claim, not a fact,
+and the control is exactly the same: someone else has to check the system of record before
+it counts.
+
+Round 2, the author fixed it — restated `status: proposed`/`in_review` and explicit that
+"v2.0.0 remains the approved contract-of-record until this concludes" — and the reviewer
+verified the correction the same way, by re-fetching the real file rather than taking the
+revised draft's word for it either:
+
+> Draft correctly labels itself `status: proposed`/`in_review` and explicitly states
+> v2.0.0 remains the contract-of-record — consistent with the actual currently-approved
+> contract retrieved from `contracts/silver_customers.yml` (v2.0.0, status approved). No
+> premature self-approval.
+>
+> VERDICT: APPROVE
+
+The same round also independently re-verified `row_conservation` (309 = 285 + 24) and a
+new rule, `unknown_member_present` (Phase 6/docs/10's sentinel row), and correctly scoped
+`risk_rating_range`: the sentinel `risk_rating=99` that fails elsewhere lives in
+`silver_customers_rejected`, "correctly quarantined, not in scope of this table's rule" —
+the reviewer distinguishing a rule's *scope* from a value that legitimately exists
+somewhere else in the system, rather than flagging a false positive.
+
+**Not fully reproducible, and that's worth saying plainly.** Re-running the same command
+again afterward, the author noticed an approved contract already existed and didn't
+attempt to re-version or self-approve at all — straight APPROVE, first round. The
+self-approval attempt happened once, not every time. That's the honest shape of an LLM
+agent's behavior: a real failure mode worth having a control for, not a deterministic bug
+you can point at a specific line of code. The control (an independent reviewer that
+re-fetches the system of record) is the part that has to hold every time — and did, both
+times.
+
 ### Limitation this surfaced: the A2A loop has no artifact memory
 
 Each `lga review` regenerates the contract from scratch — the author never sees the previous
@@ -206,3 +261,7 @@ Noted for a future phase.
 - "Agents anchored on a wrong hypothesis; I can explain the mitigation as a prompt/tool/HITL
   design choice."
 - "The agent found a real bug in a pipeline I wrote — `current_date` vs `created_at`."
+- "One review round the author's draft tried to mark itself pre-approved; the reviewer
+  caught it by re-fetching the system of record instead of trusting the draft's own
+  description of its status — the same control that catches a wrong number also catches
+  a process violation, because both come from 'verify, don't trust'."

@@ -25,6 +25,10 @@ Design choices that make LLM consumption work:
   does not.
 - **Metadata as first-class content.** Owner, layer, lineage, PII flags are in the card
   text, so semantic search over "who owns customer PII" works with no extra code.
+- **The PII flag is enforced, not just documented.** `_mask()` redacts a flagged column's
+  sample values and min/max *before* the `ColumnProfile` is built — the one place every
+  consumer (this card, the RAG index, `profile_column`) reads from. It wasn't always: see
+  docs/07 for the gap this project found in its own catalog and the fix.
 
 ## Try
 

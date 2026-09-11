@@ -36,6 +36,10 @@ them in the prompt. The model's job shrinks to reading comprehension.
    run. No drift between catalog and answers.
 5. **Memory.** This phase is stateless (one question). Phase 3 adds working memory
    (the transcript); a "conversation memory" would add prior Q&A to the context.
+6. **Retrieval is role-scoped too (Phase 6).** `search_catalog` filters retrieved cards
+   by the caller's `Role` before returning them — a table your role can't query, it can't
+   surface via RAG either. Same policy, same object, whichever tool the model reaches
+   for. See docs/08.
 
 ## Try
 ```bash

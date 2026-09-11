@@ -21,7 +21,24 @@ def test_branch_role_restricted_table_set():
     role = P.ROLES["branch_ops_london"]
     assert role.can_access("silver_customers")
     assert not role.can_access("bronze_customers")
+    # silver_customers_rejected stays off-limits (customer-quarantine, audit-only);
+    # silver_accounts_rejected is now in scope, row-filtered like its live counterpart.
     assert not role.can_access("silver_customers_rejected")
+    assert role.can_access("silver_accounts_rejected")
+
+
+def test_branch_role_row_filter_on_rejected_accounts_uses_bronze_not_silver():
+    # silver_accounts_rejected is an ANTI JOIN against silver_customers, so a filter
+    # written against silver_customers would silently match nothing, for any city.
+    role = P.ROLES["branch_ops_london"]
+    filt = role.row_filters["silver_accounts_rejected"]
+    assert "bronze_customers" in filt
+    assert filt != role.row_filters["silver_accounts"]
+    sql = "SELECT reason_code, count(*) FROM silver_accounts_rejected GROUP BY 1"
+    rewritten = P.apply_row_filters(sql, role, {"silver_accounts_rejected"})
+    assert "(SELECT * FROM silver_accounts_rejected WHERE customer_id IN" in rewritten
+    assert "bronze_customers" in rewritten
+    assert "AS silver_accounts_rejected" in rewritten
 
 
 def test_current_role_reads_env(monkeypatch):

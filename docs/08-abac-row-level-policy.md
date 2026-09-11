@@ -73,12 +73,49 @@ Tables without a direct `city` column get a filter that joins back to one that d
 "silver_accounts": "customer_id IN (SELECT customer_id FROM silver_customers WHERE city = 'London')"
 ```
 
+### A filter that looked right and was silently wrong
+
+Extending `branch_ops_london` to `silver_accounts_rejected` (the Phase-5.5 quarantine
+table, docs/06) by copying the `silver_accounts` pattern —
+`customer_id IN (SELECT customer_id FROM silver_customers WHERE city = 'London')` —
+runs without error and returns **zero rows, always, for every city**. Not a bug in the
+row-filter mechanism: `silver_accounts_rejected` is built as
+`bronze_accounts ANTI JOIN silver_customers`, so by construction no row's `customer_id`
+ever matches a `silver_customers` row. The filter was checking the one table this data
+is guaranteed *not* to be in.
+
+The real audit trail is one layer down, in bronze — and a live check found real cases:
+customer 46 and customer 183 were rejected on the age rule (so absent from
+`silver_customers`) but both have `bronze_customers.city = "  London "` (whitespace and
+all, since bronze is pre-cleansing). The corrected filter reads from `bronze_customers`
+directly, normalised the same way the silver build normalises it:
+
+```python
+"silver_accounts_rejected": (
+    "customer_id IN (SELECT customer_id FROM bronze_customers "
+    "WHERE upper(trim(city)) = 'LONDON')"
+)
+```
+
+`branch_ops_london` running `SELECT reason_code, count(*) FROM silver_accounts_rejected
+GROUP BY 1` now correctly returns 3 accounts (customers 46 and 183); `ORPHAN_CUSTOMER`
+rows stay excluded, correctly — those customer IDs don't exist in `bronze_customers`
+either, so no city can be attributed to them.
+
+**The lesson, generalised:** a row filter's *correctness* depends on where the
+attribute it filters on actually lives — for a table built by anti-joining against the
+very table you'd normally filter from, that's never the table itself. This is exactly
+the kind of thing an engine-native row access policy doesn't save you from either;
+Snowflake and Databricks would catch the *syntax* but not this *semantic* error. Only
+testing against real data does (docs/07's whole thesis, one level deeper).
+
 ### Live proof
 
 ```
-$ LGA_ROLE=branch_ops_london ...                  list_tables         -> 4 tables (bronze_* gone)
+$ LGA_ROLE=branch_ops_london ...                  list_tables         -> 5 tables (bronze_* gone)
                                                     run_sql city breakdown -> {'London': 95}   (only)
                                                     run_sql on silver_transactions -> 1278       (accounts-filtered via 2 nested joins)
+                                                    run_sql on silver_accounts_rejected -> 3 rows (customers 46, 183 — filter reads bronze_customers)
                                                     profile_column email  -> still masked ('s***@example.com', ...)
                                                     run_sql on bronze_customers -> ToolError: role 'branch_ops_london' is not permitted to access: bronze_customers
                                                     search_catalog "customer data quality" -> ['gold_customer_360','silver_customers','silver_accounts']  (no bronze_*)

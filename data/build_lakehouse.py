@@ -187,6 +187,31 @@ def main() -> None:
         """
     )
 
+    # Quarantine: bronze customers that did NOT reach silver, with a reason code.
+    # The rejection rule now lives in *data*, not just in this script — so a data
+    # contract / catalog can declare it and consumers can reconcile the row counts.
+    #   DOB_IMPLAUSIBLE       date_of_birth before 1910
+    #   DOB_AFTER_ONBOARDING  born after the account was created (impossible)
+    #   MINOR_AT_ONBOARDING   under 18 at created_at (KYC exception)
+    con.execute(
+        """
+        CREATE TABLE silver_customers_rejected AS
+        WITH deduped AS (SELECT DISTINCT * FROM bronze_customers)
+        SELECT
+            d.*,
+            CASE
+                WHEN d.date_of_birth < DATE '1910-01-01'            THEN 'DOB_IMPLAUSIBLE'
+                WHEN d.date_of_birth > d.created_at                 THEN 'DOB_AFTER_ONBOARDING'
+                WHEN d.date_of_birth > d.created_at - INTERVAL 18 YEAR THEN 'MINOR_AT_ONBOARDING'
+                ELSE 'UNKNOWN'
+            END                                                    AS reason_code,
+            'silver_customers'                                      AS rejected_by,
+            current_timestamp::TIMESTAMP                            AS rejected_at
+        FROM deduped d
+        ANTI JOIN silver_customers s ON d.customer_id = s.customer_id
+        """
+    )
+
     con.execute(
         """
         CREATE TABLE silver_accounts AS

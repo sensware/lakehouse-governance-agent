@@ -27,6 +27,7 @@ from .config import DB_PATH
 # Declared table-level lineage (we own the build, so we know it).
 LINEAGE: dict[str, list[str]] = {
     "silver_customers": ["bronze_customers"],
+    "silver_customers_rejected": ["bronze_customers", "silver_customers"],
     "silver_accounts": ["bronze_accounts", "silver_customers"],
     "silver_accounts_rejected": ["bronze_accounts", "bronze_customers", "silver_customers"],
     "silver_transactions": ["bronze_transactions", "silver_accounts"],
@@ -37,6 +38,7 @@ LINEAGE: dict[str, list[str]] = {
 # Business owner / classification metadata — normally from a catalog tool.
 DOMAIN_OWNERS: dict[str, str] = {
     "customers": "Retail Banking — Customer Domain",
+    "customers_rejected": "Retail Banking — Customer Domain (quarantine)",
     "accounts": "Retail Banking — Deposits Domain",
     "accounts_rejected": "Retail Banking — Deposits Domain (quarantine)",
     "transactions": "Payments Domain",

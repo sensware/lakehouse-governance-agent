@@ -133,8 +133,35 @@ silver_accounts_rejected = bronze_accounts ANTI JOIN silver_customers
 Invariant now testable in a contract: `count(bronze) = count(silver) + count(rejected)`, no
 overlap. First result through the MCP tools: 35 upstream-rejected accounts hold **£4.80M** in
 balances — the age-rule fix is quarantining material money, which nobody could see before.
-Same treatment belongs on `silver_customers` (reason codes `DOB_IMPLAUSIBLE`, `MINOR_AT_ONBOARDING`)
-— left as the next exercise.
+
+`silver_customers_rejected` followed, reason codes `DOB_IMPLAUSIBLE` / `DOB_AFTER_ONBOARDING`
+(5) / `MINOR_AT_ONBOARDING` (10). Reconciles: 300 distinct bronze = 285 silver + 15 rejected.
+
+### Run 3 — the review after the customer quarantine table
+
+**Trace:** draft → REVISE → revise → **APPROVE**. 2 reviews, 1 revision, 40 tool calls, 0 errors
+— the fastest convergence yet (run 1: never; run 2: 3 reviews).
+
+**The finding that vanished.** Every prior run's headline was *"15 customers silently dropped,
+lineage says 1:1, no audit trail"*. This run the reviewer instead **confirmed the
+reconciliation** (`300 = 285 + 15`), matched the reason-code counts, and called the disclosure
+"honest ... rather than hidden". Encoding the rejection rule as data closed the finding.
+
+**The finding that replaced it** is genuinely subtler and correct: the 9 exact-duplicate
+bronze rows (309 → 300 distinct) are collapsed by `SELECT DISTINCT` — that's *dedup*, not
+rejection, so they never enter `silver_customers_rejected` and have no `DUPLICATE_ROW` reason
+code. The author resolved it by **disclosing it as a tracked known gap** rather than inventing
+a code, which is the right call: collapsing byte-identical rows isn't data loss. The contract
+now carries a `known_gap` block and a remediation item for it.
+
+**Also fixed this round:** a `freshness_check` rule that referenced a non-existent
+`table_load_timestamp` column — unenforceable as written; replaced with an honest "monitored
+via pipeline metadata, not a table column" note. And a GDPR retention/erasure clause was added.
+
+**Takeaway for the architect hat:** a quarantine table converts an *un-auditable pipeline
+side-effect* into a *declared, reconcilable contract term*. The reviewer stopped arguing about
+whether rows were lost and started verifying an arithmetic identity — which is the whole point
+of a data contract.
 
 ## Cost & observability notes
 

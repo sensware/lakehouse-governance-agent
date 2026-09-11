@@ -1,28 +1,37 @@
-## Governance Review: `silver_customers` Data Contract v2.0.0
+## Verification Summary
 
-**Verification performed against live lakehouse data:**
+I independently checked every material claim in the draft against the lakehouse:
 
-| Claim | Contract states | Verified value | Match? |
-|---|---|---|---|
-| PK uniqueness | `customer_id` unique, non-null | 285 rows, 285 distinct, 0 nulls | ✅ |
-| Bronze row/id counts | 309 rows, 300 distinct ids, 9 duplicated | Confirmed exactly 9 duplicate ids (5,45,103,145,160,168,189,234,284) | ✅ |
-| Undocumented filter drop | 15 distinct bronze ids (5%) missing from silver | Confirmed: `bronze EXCEPT silver` = 15 rows | ✅ |
-| Row-count reconciliation 5.0% | 15/300 = 5.0% | Confirmed | ✅ |
-| Risk_rating sentinel 99 handling | Sentinel 99 nulled correctly | Bronze has 47 rows with 99; silver has 0 rows with 99 or out-of-range values | ✅ |
-| kyc_status enum/casing standardization | Uppercase, enum-only, blanks nulled | Confirmed only {VERIFIED, PENDING, REJECTED, NULL} remain, 0 lowercase | ✅ |
-| City trimming/casing | Standardized trimmed/title-case | Confirmed 0 rows with untrimmed/non-title-case values | ✅ |
-| Null-rate thresholds (email 10.2%, kyc_status 24.9%, risk_rating 32.6%) | As stated | Profile matches exactly | ✅ |
-| Email regex compliance | 100% of non-null match regex | Confirmed 0 violations | ✅ |
-| DOB plausibility (≥18yrs) | 0 under-18 rows retained | Confirmed 0 rows with DOB > current_date−18y | ✅ |
-| PII/personal_data flags | first/last/email/DOB = direct PII; city/kyc_status/risk_rating = personal_data only | Consistent with actual column semantics (quasi-identifiers vs direct identifiers) — reasonable GDPR classification | ✅ |
-| GDPR erasure process | DPO-routed, legal-obligation exception under Art. 17(3)(b), audit log | Policy narrative, not independently verifiable via SQL, but internally consistent and appropriately scoped (not a blanket override) | ✅ (procedural, plausible) |
+**Row counts / lineage**
+- `bronze_customers`: 309 total rows, 300 distinct `customer_id` ✅ matches contract.
+- 9 `customer_id`s (5, 45, 103, 145, 160, 168, 189, 234, 284) have exact duplicate rows in bronze — confirmed both the count (9) and that the named examples (5, 45, 103) are true **full-row** duplicates, not just same-ID conflicts. ✅ matches "N:1 dedup" lineage description.
+- 300 distinct bronze customers → 285 in `silver_customers` + 15 in `silver_customers_rejected` = 300 ✅.
+- `gold_customer_360` (285 rows) correctly traces to `silver_customers` as upstream ✅.
 
-**Discrepancy found:**
-The lineage narrative states *"14 of 15 dropped bronze customer_ids have date_of_birth on/after 2003-01-01 (versus only 4 such rows retained in silver)."* Direct query of the actual 15 dropped rows shows **all 15 (100%), not 14**, have `date_of_birth >= '2003-01-01'`. The "4 retained" figure is correct (confirmed independently), but the "14 of 15" figure is wrong — it should be "15 of 15." This is a factual/numeric error in a document whose central argument (that the undocumented filter is a buggy, DOB-correlated defect) rests specifically on these cited statistics. Since this document is meant to serve as an auditable evidentiary record supporting a remediation ticket (DATA-4821) and regulatory reconciliation rule, the underlying evidence must be exactly correct.
+**Primary key**
+- `customer_id` NULL count = 0 ✅
+- No duplicate `customer_id` groups in `silver_customers` ✅ PK is genuinely unique and non-null.
 
-Everything else — PK integrity, standardization logic, sentinel-null handling, PII/personal_data classification, quality rule pass/fail status, and the GDPR erasure workflow — checks out faithfully against the data.
+**Quality rules — all re-executed directly, all pass as claimed:**
+- `no_exact_duplicate_rows`: 0 violations ✅
+- `kyc_status_enum`: 0 violations ✅
+- `risk_rating_range`: 0 violations ✅
+- `dob_plausibility`: 0 violations ✅
+- `no_minors_at_onboarding`: 0 violations ✅
+- `city_known_set`: 0 violations ✅
+- `email_format`: 0 violations ✅
 
-VERDICT: REVISE
-- Correct the lineage narrative statistic: 15 of 15 (not 14 of 15) dropped bronze `customer_id`s have `date_of_birth >= 2003-01-01`; re-verify and update the "known_issues" (KI-1) and `filter_undocumented` text accordingly before sign-off, since this figure is cited as evidentiary support for the root-cause diagnosis.
-- Once corrected, re-confirm the row_count_reconciliation and rejected_records_audit_trail rule descriptions still align with the corrected stat (no other numeric changes expected).
-- No other defects found; PK, dedup counts, standardization, sentinel-null cleansing, null-rate thresholds, PII/personal_data classification, and GDPR erasure process are all verified accurate and may be re-approved once the above correction is made.
+**Rejected table**
+- `silver_customers_rejected` reason codes = MINOR_AT_ONBOARDING (10), DOB_AFTER_ONBOARDING (5), total 15 — matches contract exactly, and confirms the stated audit gap (no DUPLICATE_ROW code present) is accurately disclosed rather than hidden ✅.
+
+**Null rates** (email 10.2%, DOB 3.9%, city 11.9%, kyc_status 24.9%, risk_rating 32.6%) — all match the catalog profile exactly ✅.
+
+**PII flagging** — `first_name`, `last_name`, `email`, `date_of_birth` are correctly flagged `pii: true`; `city`/`kyc_status`/`risk_rating`/`created_at`/`customer_id` correctly flagged non-PII. GDPR section's `pii_columns` list is consistent with the schema flags. Retention, lawful basis, DSAR/erasure, and access-control clauses are present and specific (KYC/AML 7-year retention, masking by default) — satisfies GDPR/KYC documentation expectations for this table.
+
+**Freshness** — the previous version's unenforceable rule was correctly replaced; the new version honestly labels `created_at` as a weak proxy only and does not claim it as a real SLA-enforcing mechanism. This is accurate and appropriately caveated rather than overstated.
+
+**Minor observation (non-blocking):** `gold_customer_360` carries `first_name`/`last_name` (PII) downstream but this contract does not extend access-control guarantees to that table — worth a cross-reference note in a future gold-layer contract, but out of scope for `silver_customers` itself.
+
+All factual claims in the contract (row counts, dedup mechanics, null rates, rule pass/fail status, rejected-row reason codes, PK integrity) were independently reproduced and matched. The known-gap disclosure (duplicate audit trail) is honest and appropriately flagged as an open remediation item rather than glossed over.
+
+VERDICT: APPROVE

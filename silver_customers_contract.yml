@@ -1,0 +1,228 @@
+apiVersion: v1
+kind: DataContract
+metadata:
+  name: silver_customers
+  version: 2.0.1
+  status: revised_pending_reapproval
+  change_log:
+    - version: 2.0.1
+      change: >
+        Corrected factual error in lineage narrative / known_issues (KI-1):
+        the dropped-row DOB statistic is "15 of 15" (100%) bronze customer_ids
+        with date_of_birth >= 2003-01-01 among the 15 rows dropped by the
+        undocumented filter, not "14 of 15" as previously stated. Re-verified
+        via direct query of (bronze EXCEPT silver) on 2024 review cycle.
+        Row_count_reconciliation and rejected_records_audit_trail rule
+        descriptions re-confirmed consistent with the corrected figure; no
+        other numeric changes required.
+    - version: 2.0.0
+      change: Initial reviewed contract (returned with REVISE verdict due to KI-1 stat error).
+
+owner:
+  team: Retail Banking — Customer Domain
+  domain: Retail Banking
+  data_product_owner: customer-domain-dpo@bank.example
+  steward: customer-data-steward@bank.example
+
+lineage:
+  upstreams:
+    - table: bronze_customers
+      relationship: >
+        silver_customers is derived from bronze_customers via deduplication,
+        standardization/cleansing, and an undocumented row-drop filter (see
+        known_issues KI-1). Bronze has 309 rows / 300 distinct customer_ids
+        (9 ids duplicated: 5, 45, 103, 145, 160, 168, 189, 234, 284). Silver
+        has 285 rows / 285 distinct customer_ids.
+  transformations:
+    - deduplication: "9 duplicated bronze customer_ids collapsed to 1 row each in silver"
+    - undocumented_filter: >
+        15 of 300 distinct bronze customer_ids (5.0%) are absent from silver
+        with no corresponding documented business rule (see KI-1)
+    - sentinel_nulling: "risk_rating sentinel value 99 (47 bronze rows) converted to NULL"
+    - kyc_status_standardization: "uppercased, blank strings nulled, restricted to enum {VERIFIED, PENDING, REJECTED, NULL}"
+    - city_standardization: "trimmed and converted to title case"
+  known_issues:
+    - id: KI-1
+      severity: high
+      title: Undocumented row-drop filter correlated with date_of_birth
+      description: >
+        15 distinct bronze customer_ids (5.0% of 300 distinct ids) are missing
+        from silver_customers with no documented filter/business rule
+        accounting for the drop. Direct verification of the 15 dropped rows
+        shows all 15 (100%) have date_of_birth >= 2003-01-01, versus only 4
+        such rows retained in silver_customers overall. This strong
+        correlation with recent/young date_of_birth values indicates the
+        drop is very likely caused by an unintended age/DOB-based filter bug
+        in the bronze-to-silver pipeline (e.g., an erroneous "customer must
+        be born before 2003-01-01" or similar cutoff condition), rather than
+        an intentional business rule. This is filed as remediation ticket
+        DATA-4821.
+      evidence:
+        bronze_distinct_ids: 300
+        silver_distinct_ids: 285
+        dropped_distinct_ids: 15
+        dropped_pct_of_bronze: 5.0
+        dropped_rows_with_dob_after_2003_01_01: 15
+        dropped_rows_with_dob_after_2003_01_01_pct: 100.0
+        retained_silver_rows_with_dob_after_2003_01_01: 4
+      status: open
+      ticket: DATA-4821
+      remediation: >
+        Pipeline owner to identify and remove the unintended filter condition
+        in the bronze_customers -> silver_customers transformation and
+        backfill the 15 missing customer records, subject to confirming none
+        of them are legitimately excluded (e.g., closed/erased accounts).
+
+semantics:
+  grain: One row per customer_id (deduplicated, cleansed customer record)
+  primary_key: [customer_id]
+  freshness_sla:
+    refresh_cadence: daily (batch, aligned with bronze_customers ingestion)
+    max_staleness: 24h
+    on_call: customer-domain-dpo@bank.example
+
+schema:
+  - column: customer_id
+    type: BIGINT
+    nullable: false
+    pii: false
+    personal_data: false
+    description: Unique identifier for a customer; primary key of this table.
+  - column: first_name
+    type: VARCHAR
+    nullable: false
+    pii: true
+    personal_data: true
+    description: Customer's first name. Direct identifier.
+  - column: last_name
+    type: VARCHAR
+    nullable: false
+    pii: true
+    personal_data: true
+    description: Customer's last name. Direct identifier.
+  - column: email
+    type: VARCHAR
+    nullable: true
+    null_rate_observed: 10.2%
+    pii: true
+    personal_data: true
+    description: Customer's email address. Direct identifier. Nullable where not captured upstream.
+  - column: date_of_birth
+    type: DATE
+    nullable: true
+    null_rate_observed: 3.9%
+    pii: true
+    personal_data: true
+    description: >
+      Customer's date of birth. Direct identifier when combined with other
+      fields. Used for age-plausibility checks (customer must be >= 18 years).
+  - column: city
+    type: VARCHAR
+    nullable: true
+    null_rate_observed: 11.9%
+    pii: false
+    personal_data: true
+    description: >
+      Customer's city of residence, trimmed and title-cased. Quasi-identifier
+      (personal data) but not directly identifying on its own.
+  - column: kyc_status
+    type: VARCHAR
+    nullable: true
+    null_rate_observed: 24.9%
+    pii: false
+    personal_data: true
+    description: >
+      KYC verification status, standardized to enum {VERIFIED, PENDING,
+      REJECTED}. Blank/unknown values nulled. Personal data (sensitive
+      compliance attribute) but not a direct identifier.
+  - column: risk_rating
+    type: INTEGER
+    nullable: true
+    null_rate_observed: 32.6%
+    valid_range: [1, 5]
+    pii: false
+    personal_data: true
+    description: >
+      Internal risk score (1-5). Sentinel value 99 from bronze converted to
+      NULL. Personal data (sensitive risk attribute) but not a direct
+      identifier.
+  - column: created_at
+    type: DATE
+    nullable: false
+    pii: false
+    personal_data: false
+    description: Date the customer record was created upstream.
+
+quality_rules:
+  - id: QR-1
+    name: primary_key_uniqueness
+    assertion: "COUNT(*) = COUNT(DISTINCT customer_id) AND COUNT(*) FILTER (WHERE customer_id IS NULL) = 0"
+    verified: "285 rows, 285 distinct, 0 nulls — PASS"
+  - id: QR-2
+    name: row_count_reconciliation
+    assertion: >
+      COUNT(DISTINCT bronze.customer_id) - COUNT(DISTINCT silver.customer_id)
+      <= 15 (5.0% of 300 distinct bronze ids); any increase beyond this
+      known baseline must be investigated as a new/worsening defect on top
+      of KI-1 (DATA-4821).
+    verified: "15/300 = 5.0% dropped — matches known baseline (KI-1), PASS with open known issue"
+  - id: QR-3
+    name: rejected_records_audit_trail
+    assertion: >
+      All customer_ids present in bronze_customers but absent from
+      silver_customers must be logged with reason code; currently all 15
+      are attributable to KI-1 (undocumented DOB-correlated filter,
+      100% of the 15 dropped rows have date_of_birth >= 2003-01-01) and
+      tracked under DATA-4821 pending root-cause fix and backfill.
+    verified: "15 of 15 dropped rows have date_of_birth >= 2003-01-01 — confirmed"
+  - id: QR-4
+    name: risk_rating_sentinel_cleansing
+    assertion: "COUNT(*) FILTER (WHERE risk_rating = 99 OR risk_rating NOT BETWEEN 1 AND 5) = 0"
+    verified: "0 rows with sentinel 99 or out-of-range risk_rating — PASS"
+  - id: QR-5
+    name: kyc_status_enum_compliance
+    assertion: "kyc_status IS NULL OR kyc_status IN ('VERIFIED','PENDING','REJECTED')"
+    verified: "Only {VERIFIED, PENDING, REJECTED, NULL} present, 0 lowercase — PASS"
+  - id: QR-6
+    name: city_standardization
+    assertion: "city IS NULL OR (city = TRIM(city) AND city = INITCAP(city))"
+    verified: "0 rows with untrimmed or non-title-case city values — PASS"
+  - id: QR-7
+    name: email_format_compliance
+    assertion: "email IS NULL OR email ~ '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'"
+    verified: "0 regex violations among non-null emails — PASS"
+  - id: QR-8
+    name: null_rate_thresholds
+    assertion: >
+      null_rate(email) <= 12%, null_rate(kyc_status) <= 27%,
+      null_rate(risk_rating) <= 35% (monitoring bounds around observed baselines)
+    verified: "email 10.2%, kyc_status 24.9%, risk_rating 32.6% — within bounds, PASS"
+  - id: QR-9
+    name: dob_age_plausibility
+    assertion: "date_of_birth IS NULL OR date_of_birth <= CURRENT_DATE - INTERVAL '18 years'"
+    verified: "0 rows with DOB implying age < 18 — PASS"
+
+pii_and_privacy:
+  direct_pii_columns: [first_name, last_name, email, date_of_birth]
+  personal_data_only_columns: [city, kyc_status, risk_rating]
+  classification_basis: >
+    Direct identifiers are columns that alone or trivially in combination
+    identify a natural person. Quasi-identifiers / sensitive attributes
+    (city, kyc_status, risk_rating) are classified as personal_data but not
+    direct PII, consistent with GDPR risk-based categorization.
+  gdpr_erasure_process:
+    trigger: Data subject erasure request routed through the Data Protection Officer (DPO)
+    exception_handling: >
+      Requests may be subject to the legal-obligation exception under GDPR
+      Art. 17(3)(b) (e.g., ongoing AML/KYC or financial-crime record-keeping
+      obligations); exceptions are scoped per-request, not applied as a
+      blanket override, and require DPO sign-off.
+    audit: All erasure requests, decisions, and exception justifications are logged to the compliance audit trail.
+
+consumer_guarantees:
+  - Primary key (customer_id) is unique and non-null.
+  - Schema (column names/types) will not change without a version bump and consumer notice.
+  - kyc_status values are restricted to the documented enum; risk_rating is either NULL or within [1,5].
+  - "Known issue KI-1 (5.0% undocumented row drop, DATA-4821) is disclosed and tracked until remediated; consumers requiring full bronze parity should not rely on silver_customers as complete until KI-1 is resolved."
+  - Table is refreshed daily with max staleness of 24h.
+  - Direct PII columns are access-controlled per bank data-handling policy; downstream consumers must not re-expose PII without equivalent controls.

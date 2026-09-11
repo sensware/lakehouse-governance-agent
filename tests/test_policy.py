@@ -21,10 +21,22 @@ def test_branch_role_restricted_table_set():
     role = P.ROLES["branch_ops_london"]
     assert role.can_access("silver_customers")
     assert not role.can_access("bronze_customers")
-    # silver_customers_rejected stays off-limits (customer-quarantine, audit-only);
-    # silver_accounts_rejected is now in scope, row-filtered like its live counterpart.
-    assert not role.can_access("silver_customers_rejected")
     assert role.can_access("silver_accounts_rejected")
+    assert role.can_access("silver_customers_rejected")
+
+
+def test_branch_role_row_filter_on_rejected_customers_uses_own_city_column():
+    # Unlike silver_accounts_rejected, this table carries bronze's own (untrimmed,
+    # mixed-case) `city` directly — no join needed, and no silver_customers reference
+    # to accidentally make it a no-op.
+    role = P.ROLES["branch_ops_london"]
+    filt = role.row_filters["silver_customers_rejected"]
+    assert "silver_customers" not in filt
+    assert filt == "upper(trim(city)) = 'LONDON'"
+    rewritten = P.apply_row_filters(
+        "SELECT * FROM silver_customers_rejected", role, {"silver_customers_rejected"}
+    )
+    assert "upper(trim(city)) = 'LONDON'" in rewritten
 
 
 def test_branch_role_row_filter_on_rejected_accounts_uses_bronze_not_silver():
@@ -118,4 +130,12 @@ def test_scoped_relation():
     assert P.scoped_relation("silver_customers", role) == (
         "(SELECT * FROM silver_customers WHERE city = 'London') AS silver_customers"
     )
-    assert P.scoped_relation("silver_customers_rejected", role) == "silver_customers_rejected"
+    # silver_customers_rejected now has its own row filter too (added alongside the
+    # Unknown Member); a table with genuinely no filter still passes through as-is.
+    assert P.scoped_relation("silver_customers_rejected", role) == (
+        "(SELECT * FROM silver_customers_rejected WHERE upper(trim(city)) = 'LONDON') "
+        "AS silver_customers_rejected"
+    )
+    # scoped_relation only consults row_filters, regardless of allowed_tables — a
+    # table with no configured filter passes through untouched.
+    assert P.scoped_relation("some_table_without_a_filter", role) == "some_table_without_a_filter"

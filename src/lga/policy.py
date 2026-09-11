@@ -71,6 +71,7 @@ ROLES: dict[str, Role] = {
                 "silver_accounts",
                 "silver_transactions",
                 "silver_accounts_rejected",
+                "silver_customers_rejected",
                 "gold_customer_360",
             }
         ),
@@ -96,6 +97,11 @@ ROLES: dict[str, Role] = {
                 "customer_id IN (SELECT customer_id FROM bronze_customers "
                 "WHERE upper(trim(city)) = 'LONDON')"
             ),
+            # silver_customers_rejected carries the raw bronze `city` on the row
+            # itself (it IS one of bronze_customers's own columns, just anti-joined
+            # out of silver_customers) — no join needed, but it's untrimmed/mixed
+            # case ('  London ', 'LONDON', 'London'), same as bronze always is.
+            "silver_customers_rejected": "upper(trim(city)) = 'LONDON'",
         },
     ),
 }

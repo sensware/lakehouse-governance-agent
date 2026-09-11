@@ -109,13 +109,22 @@ the kind of thing an engine-native row access policy doesn't save you from eithe
 Snowflake and Databricks would catch the *syntax* but not this *semantic* error. Only
 testing against real data does (docs/07's whole thesis, one level deeper).
 
+The companion table, `silver_customers_rejected`, didn't repeat this mistake: it carries
+bronze's own `city` directly on the row (it *is* a `bronze_customers` column, just
+anti-joined out of `silver_customers`), so the filter is simply
+`upper(trim(city)) = 'LONDON'` on the table itself — no join, no table to get wrong.
+Live-verified: 4 of its 24 rows match (customers 46, 145, 183, 189 — a mix of untrimmed,
+upper-case, and clean spellings, since it's pre-cleansing data).
+
 ### Live proof
 
 ```
-$ LGA_ROLE=branch_ops_london ...                  list_tables         -> 5 tables (bronze_* gone)
+$ LGA_ROLE=branch_ops_london ...                  list_tables         -> 6 tables (bronze_* gone)
                                                     run_sql city breakdown -> {'London': 95}   (only)
                                                     run_sql on silver_transactions -> 1278       (accounts-filtered via 2 nested joins)
                                                     run_sql on silver_accounts_rejected -> 3 rows (customers 46, 183 — filter reads bronze_customers)
+                                                    run_sql on silver_customers_rejected -> 4 rows (customers 46, 145, 183, 189 — filter reads its own city)
+                                                    run_sql on silver_customers WHERE customer_id=0 -> 0 rows (the Null Member, docs/10, has no city to match)
                                                     profile_column email  -> still masked ('s***@example.com', ...)
                                                     run_sql on bronze_customers -> ToolError: role 'branch_ops_london' is not permitted to access: bronze_customers
                                                     search_catalog "customer data quality" -> ['gold_customer_360','silver_customers','silver_accounts']  (no bronze_*)

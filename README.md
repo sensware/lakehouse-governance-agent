@@ -28,10 +28,12 @@ uv run lga evolve                                 # Phase 5  simulate a pipeline
 uv run lga contract-status silver_customers       # Phase 5  drift vs approved contract (no LLM; exit 1 on drift)
 uv run lga contract-revise silver_customers       # Phase 5  drift → propose → diff → review → promote
 
-uv run lga --role branch_ops_london list-tables   # Phase 6  ABAC, no LLM: bronze_* gone, only 4 tables
+uv run lga --role branch_ops_london list-tables   # Phase 6  ABAC, no LLM: bronze_* gone, only 6 tables
 uv run lga --role branch_ops_london run-sql "SELECT DISTINCT city FROM silver_customers"
                                                    #          -> only London (row filter, before the query runs)
 LGA_ROLE=branch_ops_london uv run lga agent "..." #          same role, respected by every tool the agent calls
+uv run lga run-sql "SELECT * FROM silver_customers WHERE customer_id = 0"
+                                                   #          the Null/Unknown Member (Kimball) — see docs/10
 ```
 
 Outputs land in `artifacts/`.
@@ -51,11 +53,12 @@ Outputs land in `artifacts/`.
 | [docs/07-databricks-governance.md](docs/07-databricks-governance.md) | Two Databricks articles mapped line-by-line to this repo — and a real PII-masking bug they surfaced and fixed |
 | [docs/08-abac-row-level-policy.md](docs/08-abac-row-level-policy.md) | Phase 6: attribute-based access control — roles, row filters, column masking, one policy every tool obeys |
 | [docs/09-snowflake-governance.md](docs/09-snowflake-governance.md) | Snowflake's lakehouse-governance guide mapped to this repo — verifies Phase 6 against row access + masking policies |
+| [docs/10-null-member-pattern.md](docs/10-null-member-pattern.md) | Kimball's Null/Unknown Member dimension row — quarantine's complement, not its replacement |
 
 ## Layout
 
 ```
-data/build_lakehouse.py   seeded BFSI dataset with deliberate bronze defects
+data/build_lakehouse.py   seeded BFSI dataset with deliberate bronze defects + a Null Member row (docs/10)
 src/lga/catalog.py        Phase 1 — profiling + catalog cards
 src/lga/rag.py            Phase 2 — embeddings, FAISS, grounded Q&A
 src/lga/tools.py          governance tools, one registry (guardrails live here)

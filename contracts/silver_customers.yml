@@ -47,9 +47,17 @@ quality_rules:
   - {name: adult_at_onboarding, severity: blocking,
      assertion: "SELECT count(*) FROM silver_customers WHERE date_of_birth IS NOT NULL AND date_of_birth > created_at - INTERVAL 18 YEAR"}
   - {name: row_conservation, severity: blocking,
-     assertion: "SELECT abs((SELECT count(*) FROM bronze_customers) - (SELECT count(*) FROM silver_customers) - (SELECT count(*) FROM silver_customers_rejected))"}
+     assertion: "SELECT abs((SELECT count(*) FROM bronze_customers) - (SELECT count(*) FROM silver_customers WHERE customer_id > 0) - (SELECT count(*) FROM silver_customers_rejected))"}
+  - {name: unknown_member_present, severity: blocking,
+     assertion: "SELECT abs(1 - (SELECT count(*) FROM silver_customers WHERE customer_id = 0))"}
 
 # Every assertion above is written to return 0 when the rule holds.
+#
+# customer_id = 0 is the Null/Unknown Member (Kimball) — a synthetic, always-present
+# sentinel row, not sourced from bronze_customers. row_conservation excludes it
+# (customer_id > 0) so it isn't mistaken for an un-reconciled real customer;
+# unknown_member_present is the companion check that the sentinel itself hasn't been
+# accidentally dropped. See docs/10.
 
 profile_expectations:
   row_count_min: 250

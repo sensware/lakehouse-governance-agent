@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="lga", description="Lakehouse Governance Agent")
+    parser.add_argument(
+        "--role",
+        choices=None,  # validated by policy.current_role() so the choice list stays in one place
+        help="ABAC role to run as (policy.py; default: $LGA_ROLE or 'analyst'). "
+        "Sets LGA_ROLE for this invocation — an operator flag, never something the model sees.",
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("build-data", help="(re)build the sample medallion lakehouse in DuckDB")
@@ -34,7 +41,17 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_revise.add_argument("table")
 
+    sub.add_parser(
+        "list-tables", help="list tables visible to --role, no LLM (Phase 6: demo ABAC for free)"
+    )
+    p_sql = sub.add_parser(
+        "run-sql", help="run one read-only statement through the ABAC-enforced tool, no LLM (Phase 6)"
+    )
+    p_sql.add_argument("sql")
+
     args = parser.parse_args(argv)
+    if args.role:
+        os.environ["LGA_ROLE"] = args.role
 
     if args.cmd == "build-data":
         import runpy
@@ -85,6 +102,25 @@ def main(argv: list[str] | None = None) -> None:
         from .a2a import contract_revision
 
         contract_revision(args.table)
+    elif args.cmd == "list-tables":
+        from . import tools as T
+
+        for t in T.list_tables():
+            print(f"{t['table']:32s} {t['layer']:8s} {t['domain']}")
+    elif args.cmd == "run-sql":
+        from rich.console import Console
+
+        from . import tools as T
+
+        con = Console()
+        try:
+            result = T.run_sql(args.sql)
+        except T.ToolError as e:
+            con.print(f"[red]ToolError:[/] {e}")
+            raise SystemExit(1) from None
+        con.print(result["columns"])
+        for row in result["rows"]:
+            con.print(row)
 
 
 if __name__ == "__main__":

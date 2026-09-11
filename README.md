@@ -27,6 +27,11 @@ uv run python -m lga.mcp_server                   # Phase 4  same tools over MCP
 uv run lga evolve                                 # Phase 5  simulate a pipeline schema change
 uv run lga contract-status silver_customers       # Phase 5  drift vs approved contract (no LLM; exit 1 on drift)
 uv run lga contract-revise silver_customers       # Phase 5  drift → propose → diff → review → promote
+
+uv run lga --role branch_ops_london list-tables   # Phase 6  ABAC, no LLM: bronze_* gone, only 4 tables
+uv run lga --role branch_ops_london run-sql "SELECT DISTINCT city FROM silver_customers"
+                                                   #          -> only London (row filter, before the query runs)
+LGA_ROLE=branch_ops_london uv run lga agent "..." #          same role, respected by every tool the agent calls
 ```
 
 Outputs land in `artifacts/`.
@@ -43,7 +48,9 @@ Outputs land in `artifacts/`.
 | [docs/04-mcp-and-a2a.md](docs/04-mcp-and-a2a.md) | MCP as a governed tool boundary; author/reviewer A2A protocol |
 | [docs/05-first-run-debrief.md](docs/05-first-run-debrief.md) | What the agents found, what they missed (anchoring), a real pipeline bug they surfaced |
 | [docs/06-contract-change-management.md](docs/06-contract-change-management.md) | Contract drift detection, structured diffs, deterministic version bumps, review-the-diff-not-the-doc |
-| [docs/07-data-native-agents.md](docs/07-data-native-agents.md) | Two Databricks articles mapped line-by-line to this repo — and a real PII-masking bug they surfaced and fixed |
+| [docs/07-databricks-governance.md](docs/07-databricks-governance.md) | Two Databricks articles mapped line-by-line to this repo — and a real PII-masking bug they surfaced and fixed |
+| [docs/08-abac-row-level-policy.md](docs/08-abac-row-level-policy.md) | Phase 6: attribute-based access control — roles, row filters, column masking, one policy every tool obeys |
+| [docs/09-snowflake-governance.md](docs/09-snowflake-governance.md) | Snowflake's lakehouse-governance guide mapped to this repo — verifies Phase 6 against row access + masking policies |
 
 ## Layout
 
@@ -58,7 +65,9 @@ src/lga/mcp_server.py     Phase 4 — the same tools over MCP
 src/lga/contract.py       Phase 5 — drift detection + structured contract diff (no LLM)
 data/evolve_lakehouse.py  Phase 5 — simulate a schema change to trigger drift
 contracts/                approved data contracts, versioned (source of truth)
+src/lga/policy.py         Phase 6 — ABAC: role, table access, row filters, PII masking (no LLM)
 tests/test_contract.py    offline tests for the diff engine
+tests/test_policy.py      offline tests for ABAC
 docs/                     one concept note per phase
 ```
 

@@ -84,13 +84,15 @@ deliberately, is the honest version of "enforce governance" — not "hide all th
 
 ### What's still not real enforcement
 
-- The mask lives in application code (`catalog.py`), not a platform policy engine — a
-  second tool that reads the raw DuckDB file directly bypasses it entirely. Unity
-  Catalog's ACLs are enforced by the engine itself, so nothing downstream can bypass
-  them.
-- `run_sql` has no row/column-level policy at all — any caller with tool access sees
-  everything. A real fix needs role-aware tool access (who is calling, not just what
-  they're asking), which this project doesn't model.
+- The mask and the row filter (docs/08) live in application code, not a platform
+  policy engine — a second tool that reads the raw DuckDB file directly bypasses all
+  of it. Unity Catalog's ACLs and Snowflake's row access/masking policies (docs/09)
+  are enforced by the engine itself, so nothing downstream can bypass them.
+- `run_sql` and `profile_column` **now do** have role-aware table, row, and column
+  policy (docs/08) — the "any caller sees everything" state this bullet used to
+  describe is fixed. What's still not modeled is a real authenticated identity behind
+  the role: `LGA_ROLE` is one coarse setting per process, not a per-call, per-user
+  lookup.
 
 ### Where this project already agrees with the thesis
 
@@ -133,7 +135,7 @@ definition looked up.
 | A dynamic, query-able certification that **auto-revokes** when the underlying data changes | **AI Certification scorecard** in Unity Catalog | `lga contract-status` — re-runs every rule and reports drift live; a passing contract with fresh drift is, functionally, a revoked certification | We don't persist the scorecard as its own artifact — it's recomputed on demand, not stored/queryable history. |
 | A single named owner accountable for fixing a wrong definition | **Data Product Owner accountability model** | `contracts/*.yml: metadata.owner` — a team alias (`customer-domain@bank.internal`), not a named individual with a defined correction workflow | Coarser than the article's model: no named person, no "agent got it wrong, here's who fixes the catalog" loop. |
 | An agent bound to one governed data product, answering from certified definitions rather than inferring | **Genie Agent** | `rag.py::answer()` — grounded strictly to retrieved catalog cards, told to say "not in the cards" rather than infer | Ours is one general RAG tool over every table; Genie binds one agent per certified data product specifically. |
-| Row-level policy enforced identically across SQL **and** vector search | **Attribute-Based Access Control (ABAC)** | Neither `run_sql` nor `rag.py`'s FAISS index enforces row-level policy — same gap named twice, from two different articles | Real gap, unresolved. Column-level PII masking (Part 1) is fixed; row-level ("this caller can't see rows for this branch/region") is not modeled at all. |
+| Row-level policy enforced identically across SQL **and** vector search | **Attribute-Based Access Control (ABAC)** | **Fixed in docs/08**: `policy.py`'s `Role` (table access + row filters + PII unmasking) is consulted by every tool — `run_sql`, `profile_column`, `list_tables`, `search_catalog`, `read_contract` — so a restricted role sees the same rows and the same tables whichever one it uses. | Enforced in application code (regex-based SQL rewriting), not the query engine — see docs/08's honest-limits section, and docs/09 for the same gap as Snowflake implements it natively. |
 | Column-level lineage captured automatically, not maintained by hand | Unity Catalog automatic lineage | `catalog.py::LINEAGE` — a hand-written dict, correct today, silently stale the moment someone adds a transformation and forgets to update it | Unchanged from docs/01's original gap; this article gives it a sharper reason to matter: lineage is *provenance for trust*, not just a diagram. |
 | Glossary/taxonomy → ontology → AI semantic layer | Business Glossary, taxonomy, Genie Ontology | `catalog.py`'s "catalog cards" *are* a small, hand-built semantic layer — domain, owner, PII flags, lineage, all in one LLM-readable document | Static and manually authored, where Genie's ontology is continuously derived from how the data is actually queried and dashboarded. |
 
@@ -166,12 +168,12 @@ rule is real SQL, re-run, not a sentence a human has to remember to check.
 > documentation — that's the 'executable governance' idea done right. What's still
 > missing is their sharper point about certification: Databricks' scorecard auto-revokes
 > and is queryable history; mine (`contract-status`) recomputes on demand and doesn't
-> persist. And ABAC across SQL *and* vector search — same gap, independently named by
-> both articles — is real and unresolved in this project."
+> persist."
 
 ---
 
-Both parts point at the same unresolved item from two angles: **row-level policy that
+Both parts pointed at the same unresolved item from two angles: **row-level policy that
 applies identically no matter which tool (SQL, vector search, a future one) an agent
-uses to reach the data.** That's the next thing worth building here, not a new phase —
-a cross-cutting fix to `tools.py`.
+uses to reach the data.** That's now built — `policy.py`, wired into every tool — see
+**docs/08**. Snowflake's own governance guide turns out to describe exactly this same
+mechanism (row access policies + masking policies); that comparison is **docs/09**.

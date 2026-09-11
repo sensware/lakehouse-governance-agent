@@ -119,15 +119,29 @@ def _mask(v: Any) -> Any:
     return s[0] + "*" * (len(s) - 1) if len(s) > 1 else "*"
 
 
-def profile_column(con: duckdb.DuckDBPyConnection, table: str, col: str, dtype: str) -> ColumnProfile:
-    row_count = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0] or 1
+def profile_column(
+    con: duckdb.DuckDBPyConnection,
+    table: str,
+    col: str,
+    dtype: str,
+    *,
+    relation: str | None = None,
+    mask: bool = True,
+) -> ColumnProfile:
+    """Profile one column. `relation` overrides what FROM reads (tools.py passes a
+    row-filtered subquery for a scoped role — see policy.py::scoped_relation);
+    defaults to the bare table. `mask` controls whether PII values are redacted
+    (default True — the catalog/RAG "semantic layer" stays safe by default; tools.py
+    passes False only for a role with `unmask_pii=True`, e.g. the DQ-audit persona)."""
+    rel = relation or table
+    row_count = con.execute(f"SELECT count(*) FROM {rel}").fetchone()[0] or 1
     nulls, distincts = con.execute(
-        f'SELECT count(*) - count("{col}"), count(DISTINCT "{col}") FROM {table}'
+        f'SELECT count(*) - count("{col}"), count(DISTINCT "{col}") FROM {rel}'
     ).fetchone()
     samples = [
         r[0]
         for r in con.execute(
-            f'SELECT DISTINCT "{col}" FROM {table} WHERE "{col}" IS NOT NULL LIMIT 5'
+            f'SELECT DISTINCT "{col}" FROM {rel} WHERE "{col}" IS NOT NULL LIMIT 5'
         ).fetchall()
     ]
     prof = ColumnProfile(
@@ -144,14 +158,14 @@ def profile_column(con: duckdb.DuckDBPyConnection, table: str, col: str, dtype: 
     temporal = any(t in dtype.upper() for t in ("DATE", "TIMESTAMP", "TIME"))
     if numeric:
         mn, mx, mean, sd = con.execute(
-            f'SELECT min("{col}"), max("{col}"), avg("{col}"), stddev("{col}") FROM {table}'
+            f'SELECT min("{col}"), max("{col}"), avg("{col}"), stddev("{col}") FROM {rel}'
         ).fetchone()
         prof.min, prof.max, prof.mean, prof.stddev = mn, mx, mean, sd
     elif temporal:
-        mn, mx = con.execute(f'SELECT min("{col}"), max("{col}") FROM {table}').fetchone()
+        mn, mx = con.execute(f'SELECT min("{col}"), max("{col}") FROM {rel}').fetchone()
         prof.min, prof.max = str(mn), str(mx)
 
-    if prof.is_pii:
+    if prof.is_pii and mask:
         prof.sample_values = [_mask(v) for v in prof.sample_values]
         prof.min, prof.max = _mask(prof.min), _mask(prof.max)
     return prof

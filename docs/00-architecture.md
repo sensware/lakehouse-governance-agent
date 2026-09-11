@@ -54,7 +54,7 @@ land on familiar ground.
 | Observability | `rich` panel trace, printed, not persisted | **MLflow 3** — full request/tool-call tracing, auditable, queryable | MLOps |
 | Guardrails | read-only SQL, single statement, row cap, PII masking in `profile_column`, artifact path sandbox | **Unity AI Gateway** — ALLOW/DENY/ASK enforced *before* execution, platform-wide, not per-tool | Responsible AI, guardrails |
 
-**Deeper dive:** [docs/07-data-native-agents.md](07-data-native-agents.md) works through
+**Deeper dive:** [docs/07-databricks-governance.md](07-databricks-governance.md) works through
 Databricks' [*data-native agents*](https://www.databricks.com/blog/data-native-ai-agents-why-agents-must-move-your-data)
 argument line by line against this repo — including a real PII-masking gap it found and
 a fix that landed in `catalog.py`.

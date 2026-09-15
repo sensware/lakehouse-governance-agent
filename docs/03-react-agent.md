@@ -44,7 +44,7 @@ routing, retries, and state — useful, but the loop is the thing to understand.
 - **Stop condition** ("finish with an executive summary") so the loop terminates cleanly.
 - Adaptive thinking is on by default on Opus 5; you don't need "think step by step".
 
-## Memory strategies (JD: "agent memory strategies")
+## Memory strategies
 
 | Type | This project | Production |
 |---|---|---|
@@ -53,7 +53,7 @@ routing, retries, and state — useful, but the loop is the thing to understand.
 | Semantic | catalog cards via `search_catalog` | the RAG index *is* long-term memory over the platform |
 | Procedural | system prompt | skills / playbooks loaded per task type |
 
-## Reasoning styles (JD: "ReAct, Tree of Thought, AutoGPT-style")
+## Reasoning styles (ReAct, Tree of Thought, AutoGPT-style)
 
 - **ReAct** — what you just ran. Linear: think → act → observe.
 - **Tree of Thought** — branch several candidate plans, score them, expand the best.

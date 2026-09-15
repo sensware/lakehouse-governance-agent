@@ -24,7 +24,7 @@ them in the prompt. The model's job shrinks to reading comprehension.
 | Retriever | `retrieve(query, k)` | Returns cards + scores. Scores let you set a "not confident" threshold. |
 | Generator | Claude with a **grounding system prompt** | "Answer only from cards, cite tables, say when not present." |
 
-## The RAG contract (what to say in an interview)
+## The RAG contract (how to explain this to a client)
 
 1. **Grounding beats memory.** The model is told to answer *only* from retrieved context.
    Hallucination risk moves from the model to the retriever, which you can measure.

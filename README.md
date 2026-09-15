@@ -1,12 +1,15 @@
 # Lakehouse Governance Agent
 
-A learning project that applies **GenAI to the data value chain**: a medallion-architecture
-lakehouse (DuckDB) plus a governance agent that catalogs it, answers questions via RAG,
-audits data quality with a ReAct tool loop, drafts data contracts, and peer-reviews them
-through an agent-to-agent hand-off — with the tools also served over MCP.
+A proof-of-concept for BFSI (banking, financial services, insurance) clients evaluating
+**GenAI on the data value chain**: a medallion-architecture lakehouse (DuckDB, standing
+in for Snowflake/Databricks) plus a governance agent that catalogs it, answers questions
+via RAG, audits data quality with a ReAct tool loop, drafts data contracts, and
+peer-reviews them through an agent-to-agent hand-off — with the tools also served over MCP
+and every call scoped by role-based access control.
 
-Built to implement: RAG · vector DBs · prompt engineering · tool calling · ReAct · agent memory · MCP · A2A ·
-responsible-AI guardrails — on top of medallion / data products / lineage / quality 
+Built to demonstrate: RAG · vector DBs · prompt engineering · tool calling · ReAct · agent memory · MCP · A2A ·
+responsible-AI guardrails — on top of medallion / data products / lineage / quality
+foundations a BFSI data platform already has.
 
 ## Quick start
 
@@ -42,8 +45,8 @@ Outputs land in `artifacts/`.
 
 | Doc | Concept |
 |---|---|
-| **[docs/GUIDE.md](docs/GUIDE.md)** | **Start here — the complete walkthrough: every phase, every concept, glossary, interview Q&A** |
-| [docs/00-architecture.md](docs/00-architecture.md) | The whole picture, and the map to Databricks / Snowflake / JD bullets |
+| **[docs/GUIDE.md](docs/GUIDE.md)** | **Start here — the complete walkthrough: every phase, every concept, glossary, client Q&A** |
+| [docs/00-architecture.md](docs/00-architecture.md) | The whole picture, and the map to Databricks / Snowflake |
 | [docs/01-catalog-and-profiling.md](docs/01-catalog-and-profiling.md) | Metadata + profiling, designed for LLM consumption |
 | [docs/02-rag.md](docs/02-rag.md) | RAG, embeddings, FAISS, grounding, retrieval telemetry |
 | [docs/03-react-agent.md](docs/03-react-agent.md) | ReAct loop, tool design, prompt engineering, memory, ToT/AutoGPT |

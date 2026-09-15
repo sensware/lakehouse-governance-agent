@@ -1,11 +1,12 @@
-# 00 — Architecture & how this maps to the job
+# 00 — Architecture & how this maps to a client's platform
 
 ## What this project is
 
-A **governance agent for a medallion lakehouse**. It applies GenAI to the *data value chain* —
-the JD's phrase — rather than to a chatbot. Every AI capability in the job spec is exercised on
-a problem you already understand (catalog, quality, lineage, contracts, access control), so
-the new concepts land on familiar ground.
+A **governance agent for a medallion lakehouse** — a proof of concept for BFSI clients
+evaluating GenAI *on the data value chain* rather than in a customer-facing chatbot. Every
+capability here is exercised on the problems a BFSI data platform already has (catalog,
+quality, lineage, contracts, access control), so the new AI concepts land on familiar
+ground instead of a green field.
 
 ```
                 ┌──────────────────────────────────────────────────────────────┐
@@ -48,7 +49,7 @@ the new concepts land on familiar ground.
 
 ## Layer-by-layer: what it teaches, and where it lives in a real platform
 
-| Layer | Here | On Databricks / Snowflake | JD bullet |
+| Layer | Here | On Databricks / Snowflake | Client requirement |
 |---|---|---|---|
 | Storage + medallion | DuckDB tables with `bronze_/silver_/gold_` prefixes | Delta/Iceberg tables in three schemas or catalogs; **Unity Catalog** / Snowflake DBs | Medallion, data products |
 | Metadata + profiling | `catalog.py` queries `information_schema` + aggregates | **Unity Catalog** system tables + **Lakehouse Monitoring**, Snowflake `ACCOUNT_USAGE`, dbt `manifest.json`, Great Expectations / Soda | Quality, lineage, metadata standards |
@@ -72,9 +73,10 @@ articles (two Databricks, one Snowflake) line by line against this repo — incl
 real PII-masking gap they found (fixed in `catalog.py`) and the ABAC gap that became
 Phase 6 ([docs/08](08-abac-row-level-policy.md)). [docs/10](10-null-member-pattern.md)
 covers the Kimball Null/Unknown Member pattern, built alongside the six AI phases rather
-than inside them — the JD's data-platform half meeting its AI half in the same repo.
+than inside them — the client's existing data-platform discipline meeting its new AI
+capabilities in the same repo.
 
-## The architect's questions this project prepares you to answer
+## Questions a client evaluation will raise
 
 1. **"How would you use GenAI in data governance?"** — RAG over live metadata for discovery;
    agents that *generate evidence-backed* DQ rules and contracts; a reviewer agent as a

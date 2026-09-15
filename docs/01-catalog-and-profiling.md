@@ -38,7 +38,7 @@ uv run lga catalog | grep -A3 "risk_rating"
 Spot the `99` sentinel and the 17.5% nulls — the agent will find the same thing in Phase 3,
 but *with evidence it gathered itself*.
 
-## Interview-grade extensions
+## Production-grade extensions
 - Swap the declared `LINEAGE` dict for column-level lineage parsed with `sqlglot`.
 - Emit the catalog as [OpenMetadata](https://open-metadata.org) / DataHub JSON.
 - Add a `freshness` field (max `updated_at`) and a `sla_hours` from the data contract.

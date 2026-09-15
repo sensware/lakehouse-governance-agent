@@ -150,25 +150,25 @@ that governance be "executable runtime logic, not documentation" is *exactly* wh
 `quality_rules: - assertion: "SELECT count(*) FROM ... WHERE ..."` already is — every
 rule is real SQL, re-run, not a sentence a human has to remember to check.
 
-## Interview soundbites
+## Client takeaways
 
-> "The Databricks 'data-native agents' argument is that governance has to run at query
+> Databricks' "data-native agents" argument is that governance has to run at query
 > planning time, before computation, because you can't redact an aggregate after the
-> fact. Writing this up, I found my own catalog's `is_pii` flag was documentation, not
-> an enforced check — `profile_column` was returning real names and emails. I fixed it
-> at the one place every consumer reads from, the same shape as Unity Catalog column
-> masking, and *deliberately* left `run_sql` unmasked, because the DQ-audit agent
-> genuinely needs raw values to find duplicates — masking has to be scoped to the use
-> case, not applied blindly to every tool."
+> fact. Building this PoC surfaced exactly that failure in our own catalog: the `is_pii`
+> flag was documentation, not an enforced check — `profile_column` was returning real
+> names and emails. Fixed at the one place every consumer reads from, the same shape as
+> Unity Catalog column masking, and *deliberately* left `run_sql` unmasked, because the
+> DQ-audit agent genuinely needs raw values to find duplicates — masking has to be
+> scoped to the use case, not applied blindly to every tool.
 
-> "The companion article's point is that governance metadata is the semantic layer, not
+> The companion article's point is that governance metadata is the semantic layer, not
 > compliance paperwork — it's what lets a cheap model answer most questions correctly
-> instead of needing a frontier model to infer meaning from raw tables every time. My
-> `contracts/*.yml` quality rules are already literal SQL that gets re-run, not
-> documentation — that's the 'executable governance' idea done right. What's still
-> missing is their sharper point about certification: Databricks' scorecard auto-revokes
-> and is queryable history; mine (`contract-status`) recomputes on demand and doesn't
-> persist."
+> instead of needing a frontier model to infer meaning from raw tables every time. This
+> PoC's `contracts/*.yml` quality rules are already literal SQL that gets re-run, not
+> documentation — that's the "executable governance" idea done right. What's still
+> missing for production is the sharper certification point: Databricks' scorecard
+> auto-revokes and is queryable history; `contract-status` here recomputes on demand and
+> doesn't persist — a natural next investment for a client adopting this pattern.
 
 ---
 

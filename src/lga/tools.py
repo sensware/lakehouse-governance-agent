@@ -5,9 +5,8 @@
     client (Claude Desktop, another agent, an IDE) can call them.
 
 Each tool is a pure-ish function over the lakehouse + a JSON schema. Keeping the
-registry transport-agnostic is the point: the "protocol to chain reasoning,
-retrieval, and action models" (the JD's MCP bullet) is just a well-typed tool
-surface plus a driver loop.
+registry transport-agnostic is the point: chaining reasoning, retrieval, and action
+models over one protocol is just a well-typed tool surface plus a driver loop.
 
 Safety: `run_sql` is read-only (DuckDB opened read_only, single statement,
 SELECT/WITH/EXPLAIN/PRAGMA only, hard row cap). This is the kind of guardrail a

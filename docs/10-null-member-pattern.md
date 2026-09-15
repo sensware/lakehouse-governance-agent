@@ -139,13 +139,14 @@ The lesson is the same one this whole repo keeps re-teaching from different angl
 (docs/05, docs/07): a concentrated edge case is often what makes a systemic bug visible,
 not what causes it.
 
-## Interview soundbite
+## Client takeaway
 
-> "A quarantine table and a Null Member solve two different problems that look similar.
-> Quarantine says 'this row is wrong, keep it out, log why.' Null Member says 'this row
-> is fine, I just can't resolve its dimension key, and I'd rather have a complete total
-> than a technically-cleaner one.' I built both in the same project, then actually
-> implemented the repoint I'd first left as an exercise — and it exposed a real
-> join-fan-out bug that had been quietly inflating a gold-layer total since the very
-> first phase. The Null Member didn't cause that bug; concentrating 40 accounts onto one
-> row is what finally made a ~9x error impossible to miss."
+> A quarantine table and a Null Member solve two different problems that look similar.
+> Quarantine says "this row is wrong, keep it out, log why." Null Member says "this row
+> is fine, we just can't resolve its dimension key, and a complete total beats a
+> technically-cleaner one." This PoC built both, then actually implemented the repoint
+> that was first left as a follow-on exercise — and it exposed a real join-fan-out bug
+> that had been quietly inflating a gold-layer total since the very first phase. The
+> Null Member didn't cause that bug; concentrating 40 accounts onto one row is what
+> finally made a ~9x error impossible to miss. Worth telling a client directly: a PoC
+> that keeps running past its first "it works" milestone keeps finding real defects.

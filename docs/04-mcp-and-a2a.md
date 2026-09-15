@@ -30,7 +30,7 @@ claude mcp add lakehouse-governance -- uv run python -m lga.mcp_server
 ```
 Then in a Claude Code session: *"Use the lakehouse tools to find orphan accounts."*
 You've just chained an external reasoning model to your governed retrieval/action layer —
-the JD's "define MCPs to chain reasoning, retrieval, and action models".
+MCPs defining exactly that chain of reasoning, retrieval, and action models.
 
 ### Enterprise framing
 - **Governance boundary.** ABAC and PII masking live in the tool registry (`policy.py`,
@@ -65,7 +65,7 @@ Google's A2A spec formalises the same idea with agent cards, tasks, and artifact
   review* — the last word on record is a verdict, never an unchecked draft. On exhaustion it
   escalates to a human with the final review file.
 
-### Orchestration frameworks (JD: LangChain, AutoGen, CrewAI)
+### Orchestration frameworks (LangChain, AutoGen, CrewAI)
 | Framework | Equivalent of this file |
 |---|---|
 | CrewAI | two `Agent`s with roles, a sequential `Crew`, tools shared |

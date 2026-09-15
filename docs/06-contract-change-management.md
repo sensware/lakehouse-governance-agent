@@ -5,8 +5,9 @@ Phase 4 drafts a contract from scratch every run — no memory, nothing cumulati
 versioned artifact in `contracts/`**, and every pipeline change goes through
 detect → propose → diff → review → promote.
 
-This is the JD's *"drive consensus on standards (e.g. data contracts, lineage) across
-different data organizations"* and *"created architectural guardrails"*, mechanised.
+This is *"drive consensus on standards (e.g. data contracts, lineage) across different
+data organizations"* and *"architectural guardrails"* — the exact governance capability
+a BFSI client's data organization needs across domains — mechanised.
 
 ## The pieces
 

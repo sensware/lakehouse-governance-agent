@@ -1,19 +1,20 @@
 # The Complete Guide — Lakehouse Governance Agent
 
-> A build-along study document for the **Senior Cloud Data & AI Architect** role.
+> A proof-of-concept guide for BFSI clients evaluating GenAI-driven data governance.
 > It walks through everything in this repo, top to bottom, and explains every
-> concept and process in detail — assuming you already know data platforms
-> (lakehouse, medallion, data mesh) but are new to the LLM / agent side.
+> concept and process in detail — assuming a data platform team that already knows
+> lakehouse / medallion / data mesh but is new to the LLM / agent side.
 
 ---
 
 ## 0. How to read this
 
-The project is built in **seven phases**. Each phase takes one cluster of the job
-description and implements it against a problem you already understand — a bank's
-medallion lakehouse — so the unfamiliar AI concepts land on familiar ground.
+The PoC is built in **seven phases**. Each phase takes one cluster of GenAI-for-
+governance capability and implements it against a problem a BFSI data platform team
+already understands — a bank's medallion lakehouse — so the unfamiliar AI concepts land
+on familiar ground.
 
-| Phase | You build | New concepts it teaches | JD bullets |
+| Phase | You build | New concepts it demonstrates | Client requirement |
 |---|---|---|---|
 | 0 | A seeded BFSI medallion lakehouse in DuckDB | (revision) medallion, data mesh, data products, domains | Medallion, data products, lakehouse |
 | 1 | Metadata catalog + column profiler | Metadata as an LLM input; "catalog cards" | Data quality, lineage, metadata standards |
@@ -29,32 +30,34 @@ guide, which ties them together. `docs/07` and `docs/09` map three vendor articl
 (two Databricks, one Snowflake) to this repo line-by-line — and found real gaps,
 one of which (`docs/08`) is now Phase 6. `docs/10` is a classical Kimball dimensional-
 modeling pattern (the Null/Unknown Member) that sits alongside, not inside, the six AI
-phases — the JD's data-platform half meeting its AI half in the same repo.
+phases — the client's existing data-platform discipline meeting its new AI capabilities
+in the same repo.
 
 ---
 
-## 1. The job, decoded
+## 1. The business problem this PoC addresses
 
-The JD is two roles fused into one:
+A BFSI client evaluating GenAI on their data platform is really asking for two
+disciplines at once, usually without separating them:
 
-**The data-platform architect** (your existing strength):
+**Data-platform discipline** (what the client's team already has):
 > Architect data lake / Lakehouse / streaming • data integration & pipeline patterns •
 > data quality, lineage, metadata standards • privacy/security/regulation compliance •
 > data products, data mesh, Medallion • Snowflake + Databricks on AWS/Azure • BFSI
 > transformation programmes • trusted advisor to stakeholders.
 
-**The GenAI / agent architect** (the part this project trains):
+**The GenAI mandate** (what this PoC exists to prove out):
 > LLMs, prompt engineering, agent frameworks (LangChain, AutoGen, CrewAI) • MCP, ReAct,
 > Tree of Thought, AutoGPT-style reasoning • Python, OpenAI APIs, Anthropic Claude,
 > vector DBs (FAISS, Pinecone, Weaviate) • A2A orchestration, agent memory, tool calling •
-> RAG pipelines with memory + context management + tool usage • *"Design and implement
-> AI and Gen AI solution for the data value chain"* • *"leverage GenAI capabilities"* for
+> RAG pipelines with memory + context management + tool usage • *"design and implement
+> AI and Gen AI solutions for the data value chain"* • *"leverage GenAI capabilities"* for
 > governance, quality, metadata, lineage • responsible AI frameworks • MLOps.
 
-The bridge sentence — the one this whole project is built around — is:
+The sentence that usually anchors this kind of mandate is some version of:
 
 > **"Define and implement data governance, quality, metadata, and lineage frameworks and
-> should be able to leverage GenAI capabilities."**
+> be able to leverage GenAI capabilities."**
 
 That is exactly what a *governance agent* is: GenAI applied to the data value chain
 instead of to a customer chatbot.
@@ -315,7 +318,7 @@ memory). That's enough for a single bounded task. For longer-running agents you'
 - **a scratchpad** — an artifact the agent reads and writes across steps;
 - **long-term memory** — a vector store of past runs, retrieved when relevant.
 
-### How ReAct relates to the other patterns in the JD
+### How ReAct relates to the other reasoning patterns
 
 | Pattern | Idea | Relationship |
 |---|---|---|
@@ -353,8 +356,8 @@ gives Claude your `run_sql` / `profile_column` / … tools directly.
 **Why bother?** It decouples the tool implementation from the model and the harness.
 One team owns and audits the tool boundary (with RBAC, PII masking, an audit log); every
 consumer — Desktop, IDE, a CrewAI crew — goes through it. That boundary is where
-governance for AI *lives*. This is the JD's *"Define Model Context Protocol (MCPs) to
-chain reasoning, retrieval, and action models"* — the tools here are exactly retrieval
+governance for AI *lives*. This is *"define Model Context Protocol (MCPs) to chain
+reasoning, retrieval, and action models"* — the tools here are exactly retrieval
 (`search_catalog`), reasoning inputs (`profile_column`), and action (`write_artifact`).
 
 **One real bug this surfaced:** the MCP SDK treats an unexpected exception as a *crash*
@@ -460,8 +463,8 @@ told *not* to touch them.
 
 > **Design bug caught in the first live run:** the author set its own version *and*
 > `save()` bumped again → double bump (v2 → v4). Fix: versioning is a pure function of
-> the diff; the agents never touch it. This is a good interview point — *"version bumps
-> are a function of the change classification, not a judgement call."*
+> the diff; the agents never touch it. This is a good point to make to a client — *"version
+> bumps are a function of the change classification, not a judgement call."*
 
 ### "Review the diff, not the document"
 
@@ -671,7 +674,7 @@ Fixed in the same change.
 
 ## 12. Cross-cutting concerns
 
-### Responsible AI (JD: "drives adoption of responsible AI frameworks")
+### Responsible AI (drives adoption of responsible AI frameworks)
 
 | Risk | Mitigation in this project |
 |---|---|
@@ -699,7 +702,7 @@ Fixed in the same change.
 - Opus 5 with adaptive thinking: an agent audit ≈ 5 model calls; an A2A review run ≈
   25–40. Switch to `claude-sonnet-5` for iteration.
 
-### MLOps (JD: "MLOps pipelines")
+### MLOps
 
 The pieces that would be CI/CD jobs:
 - `lga build-data` → the pipeline (dbt / DLT / Spark job).
@@ -731,7 +734,7 @@ The pieces that would be CI/CD jobs:
 | `policy.py::Role.row_filters` (SQL text substitution, Phase 6) | **Unity Catalog row filters** — engine-enforced, can't be evaded by rephrasing | **Row Access Policies** — `CREATE ROW ACCESS POLICY … AS (col) RETURNS BOOLEAN -> ...`, engine-enforced | Lake Formation row-level permissions / Dataplex data policies |
 | `catalog.py::_mask` + `Role.unmask_pii` (Phase 6) | Unity Catalog column masking | **Dynamic Data Masking** — `CREATE MASKING POLICY …`, multiple patterns (full/partial/tokenize) | Azure/GCP column-level masking policies |
 
-The interview answer to *"we use Snowflake and Databricks, not DuckDB"*: **"The
+The answer when a client says *"we use Snowflake and Databricks, not DuckDB"*: **"The
 patterns are identical — swap the connection string and push the profiling SQL down to
 the warehouse. Here's the mapping table."** For the deeper argument behind several of
 these rows — why Databricks says agents belong *inside* the platform, why Snowflake
@@ -874,9 +877,9 @@ fast (FAISS, Pinecone, Weaviate, pgvector).
 
 ---
 
-## 15. Interview question bank
+## 15. Client Q&A
 
-**"How would you apply GenAI to data governance?"**
+**"How would this apply GenAI to data governance?"**
 RAG over live catalog metadata for discovery; a ReAct agent that generates
 evidence-backed DQ rules and data contracts by querying the warehouse; an independent
 reviewer agent as a separation-of-duties control; deterministic contract change
@@ -886,25 +889,25 @@ management with drift detection. Humans approve; the AI drafts and checks.
 RAG. Metadata changes daily; fine-tuning would be stale immediately and long context
 is expensive and lossy. Re-index in CI after each pipeline run.
 
-**"What are the failure modes and how do you mitigate them?"**
+**"What are the failure modes and how are they mitigated?"**
 Hallucination → grounding contract + tools that return real data + a reviewer that
 re-derives numbers. Unsafe actions → read-only tool surface, sandboxed writes.
 PII leakage → mask at the tool boundary, at the one place every consumer reads from —
-found a real instance of this missing in `profile_column`, fixed it in `catalog.py`,
-and *deliberately* left the raw-access tool (`run_sql`) unmasked because the DQ-audit
-use case genuinely needs real values (docs/07). Non-determinism → log every tool call,
-pin models, make versioning deterministic. Anchoring → enumerate hypotheses before
-querying, HITL on critical findings.
+this PoC found a real instance of this missing in `profile_column`, fixed it in
+`catalog.py`, and *deliberately* left the raw-access tool (`run_sql`) unmasked because
+the DQ-audit use case genuinely needs real values (docs/07). Non-determinism → log
+every tool call, pin models, make versioning deterministic. Anchoring → enumerate
+hypotheses before querying, HITL on critical findings.
 
-**"Databricks argues agents must move to the data, not the other way round — thoughts?"**
-Agreed, and this project is a working demonstration of the exact failure it describes:
-by design, the LLM calls sit outside any perimeter (straight to Anthropic's API), and
-writing up the mapping surfaced a real bug — a catalog `is_pii` flag that was metadata
-only, never enforced, so `profile_column` leaked raw names and emails. Fixed at the one
-place every consumer reads from. The deeper point stands, though: that's an
-application-level patch, not platform enforcement — a second tool reading the same
-DuckDB file bypasses it entirely, which is exactly why Unity Catalog enforces ACLs in
-the engine instead of in each caller. Full mapping in docs/07.
+**"Databricks argues agents must move to the data, not the other way round — how does this hold up?"**
+Agreed, and this PoC is a working demonstration of the exact failure it describes: by
+design, the LLM calls sit outside any perimeter (straight to Anthropic's API), and
+mapping this PoC against that argument surfaced a real bug — a catalog `is_pii` flag
+that was metadata only, never enforced, so `profile_column` leaked raw names and
+emails. Fixed at the one place every consumer reads from. The deeper point stands,
+though: that's an application-level patch, not platform enforcement — a second tool
+reading the same DuckDB file bypasses it entirely, which is exactly why Unity Catalog
+enforces ACLs in the engine instead of in each caller. Full mapping in docs/07.
 
 **"Why MCP instead of just calling functions?"**
 It decouples the tool implementation from the model and the harness. One governed,
@@ -913,9 +916,9 @@ IDEs, orchestrators. That boundary is where AI governance is enforced.
 
 **"What's the value of the multi-agent setup?"**
 Separation of duties. The author agent optimises for a complete contract; the reviewer
-optimises for catching errors. In our runs the reviewer caught the author misstating
-its own evidence twice, and caught a real pipeline bug. One agent doing both would have
-shipped both.
+optimises for catching errors. Across the review runs, the reviewer caught the author
+misstating its own evidence twice, and caught a real pipeline bug. One agent doing both
+would have shipped both.
 
 **"How does contract change management work?"**
 Approved contracts are versioned YAML. On any pipeline change, a no-LLM drift detector
@@ -925,23 +928,24 @@ a reviewer verifies only the diff, and the version bump is derived from the
 classification — breaking changes can't ship as a patch. `contract-status` exits
 non-zero to block the CI merge.
 
-**"This is DuckDB, not our stack."**
+**"We run Snowflake/Databricks, not DuckDB — does this transfer?"**
 The patterns are identical. `information_schema` queries, window functions, and
 `ANTI JOIN` run unchanged on Snowflake and Spark SQL; push profiling down to the
-warehouse. The embedding model, vector store, and LLM are each one swap. [Show the
-mapping table in §13.]
+warehouse. The embedding model, vector store, and LLM are each one swap. See the
+mapping table in §13.
 
-**"How would you implement row-level security and column masking for an AI agent?"**
+**"How would this implement row-level security and column masking for an AI agent?"**
 Both need to apply *before* computation, not after — you can't redact an aggregate
-once it's used a forbidden row. I built this: a `Role` (allowed tables, row filters,
+once it's used a forbidden row. This PoC builds a `Role` (allowed tables, row filters,
 a masking flag) consulted by every tool that reaches the data, so a restricted role
 sees the same tables and rows through SQL, a profiling tool, and a RAG retriever
 alike. Row filtering works by substituting a table reference with a pre-filtered
 subquery before the rest of the query runs. On Snowflake that's a native row access
-policy plus a masking policy, engine-enforced; mine is application-level and, unlike
-theirs, could in principle be evaded by a query my regex-based table matching doesn't
-recognize. I'd lead with that limit unprompted — it's the honest difference between a
-demo and a platform feature.
+policy plus a masking policy, engine-enforced; here it's application-level and, unlike
+a platform feature, could in principle be evaded by a query the regex-based table
+matching doesn't recognize — the honest difference to lead with unprompted between a
+PoC and a platform feature, and the reason a production rollout would move enforcement
+into the engine.
 
 ---
 
@@ -986,7 +990,7 @@ Outputs land in `artifacts/`. Approved contracts live in `contracts/`.
 | Gap | What a real platform does |
 |---|---|
 | Column-level lineage | Parse transformation SQL with `sqlglot`, or read dbt `manifest.json` / OpenLineage |
-| Streaming | The JD mentions streaming systems; this is all batch. Add Kafka → a bronze stream + windowed silver. |
+| Streaming | Most BFSI platforms run streaming systems alongside batch; this PoC is all batch. Add Kafka → a bronze stream + windowed silver. |
 | Hybrid retrieval | Vector + BM25 keyword + a re-ranker; the run showed pure-vector missing an obvious table |
 | Agent memory across runs | Persist episodic summaries; load the prior contract as the author's starting point |
 | Notification side-effects | On a breaking change, open a ticket / post to the domain channel / start the 30-day clock |
@@ -1037,5 +1041,5 @@ docs/
 
 ---
 
-*Built as a training exercise. Every AI capability in the JD is exercised on a real
-governance problem, locally, for the price of a few Claude API calls.*
+*Built as a proof of concept. Every AI capability a BFSI client would ask about is
+exercised on a real governance problem, locally, for the price of a few Claude API calls.*

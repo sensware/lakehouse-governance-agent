@@ -7,7 +7,8 @@ via RAG, audits data quality with a ReAct tool loop, drafts data contracts, and
 peer-reviews them through an agent-to-agent hand-off — with the tools also served over MCP
 and every call scoped by role-based access control.
 
-Built to demonstrate: RAG · vector DBs · prompt engineering · tool calling · ReAct · agent memory · MCP · A2A ·
+Built to demonstrate: 
+RAG · vector DBs · prompt engineering · tool calling · ReAct · agent memory · MCP · A2A ·
 responsible-AI guardrails — on top of medallion / data products / lineage / quality
 foundations a BFSI data platform already has.
 

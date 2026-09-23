@@ -20,7 +20,7 @@ import json
 from rich.console import Console
 from rich.panel import Panel
 
-from .config import ANTHROPIC_MODEL, require_api_key
+from .config import ANTHROPIC_MODEL, effort_params, require_api_key
 from .tools import ToolError, anthropic_tool_specs, call_tool
 
 console = Console()
@@ -59,6 +59,7 @@ def run_agent(task: str, *, system: str = SYSTEM, verbose: bool = True) -> str:
             system=system,
             tools=tools,
             messages=messages,
+            **effort_params(),
         )
         messages.append({"role": "assistant", "content": resp.content})
 

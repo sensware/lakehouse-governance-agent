@@ -1,7 +1,8 @@
 # 05 — First live run: what the agents found, what they missed, what it teaches
 
-Model: `claude-opus-5` (adaptive thinking). Artifacts from this run are committed under
-`artifacts/` so you can read them alongside this note.
+Model: `claude-opus-5` (adaptive thinking) was the project default when these runs were
+made; the default is now `claude-opus-5-5` (see docs/GUIDE.md §3). Artifacts from this run
+are committed under `artifacts/` so you can read them alongside this note.
 
 ## Phase 2 · RAG — `lga ask`
 

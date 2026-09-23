@@ -114,8 +114,11 @@ cp .env.example .env            # add ANTHROPIC_API_KEY=sk-ant-...
 | `rich` | console output | Renders the agent's reasoning/tool-call trace as readable panels. |
 | `pytest` | tests | Offline tests for the Phase 5 diff engine (no API calls). |
 
-`ANTHROPIC_MODEL` defaults to `claude-opus-5` (in `src/lga/config.py`); set it to
-`claude-sonnet-5` in `.env` for cheaper, faster iteration.
+`ANTHROPIC_MODEL` defaults to `claude-opus-5-5` (in `src/lga/config.py`); set it to
+`claude-sonnet-5` in `.env` for cheaper, faster iteration, or `claude-opus-5` to pin the
+previous default. `ANTHROPIC_EFFORT` defaults to `high`: Opus 5.5 would otherwise fall
+back to `medium`, and audits and contract reviews are correctness-sensitive. Set it empty
+to omit the parameter for models that don't support effort (e.g. Haiku 4.5).
 
 ---
 
@@ -699,7 +702,9 @@ Fixed in the same change.
 
 - The `rich` panel trace is the human-readable audit log; a production version persists
   `(run_id, step, tool, args, result_hash, latency)` + the final artifact hash.
-- Opus 5 with adaptive thinking: an agent audit ≈ 5 model calls; an A2A review run ≈
+- Default model is Opus 5.5 with thinking always on and effort pinned to `high`. Call
+  counts below were measured on Opus 5 and describe the loop's structure, so expect
+  similar shape but re-measure: an agent audit ≈ 5 model calls; an A2A review run ≈
   25–40. Switch to `claude-sonnet-5` for iteration.
 
 ### MLOps
@@ -1027,6 +1032,7 @@ src/lga/
 tests/
   test_contract.py        offline tests for the diff engine
   test_policy.py          offline tests for ABAC (roles, row-filter rewrite, env handling)
+  test_config.py          offline tests for model/effort defaults + agent request wiring
 docs/
   00-architecture.md      the picture + the cloud-platform mapping
   01..06                  one concept note per phase

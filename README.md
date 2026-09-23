@@ -74,6 +74,7 @@ contracts/                approved data contracts, versioned (source of truth)
 src/lga/policy.py         Phase 6 — ABAC: role, table access, row filters, PII masking (no LLM)
 tests/test_contract.py    offline tests for the diff engine
 tests/test_policy.py      offline tests for ABAC
+tests/test_config.py      offline tests for model/effort defaults + agent request wiring
 docs/                     one concept note per phase
 ```
 

@@ -42,7 +42,11 @@ routing, retries, and state — useful, but the loop is the thing to understand.
   "quantify", "reference table.column", "note regulatory relevance").
 - **Deliverable format** stated up front (Markdown/YAML via `write_artifact`).
 - **Stop condition** ("finish with an executive summary") so the loop terminates cleanly.
-- Adaptive thinking is on by default on Opus 5; you don't need "think step by step".
+- Thinking is always on with the default model, Opus 5.5 — it can't be disabled, and
+  effort is the only depth control (`ANTHROPIC_EFFORT`, pinned to `high`; Opus 5.5's own
+  default is `medium`). You don't need "think step by step". The agent loop appends
+  `resp.content` back unchanged, thinking blocks included, which is what keeps
+  multi-step tool use valid on models that tie thinking to the conversation.
 
 ## Memory strategies
 

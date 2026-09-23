@@ -23,7 +23,7 @@ import faiss
 import numpy as np
 
 from .catalog import build_catalog
-from .config import ANTHROPIC_MODEL, EMBED_MODEL, INDEX_DIR, require_api_key
+from .config import ANTHROPIC_MODEL, EMBED_MODEL, INDEX_DIR, effort_params, require_api_key
 
 _INDEX_FILE = INDEX_DIR / "cards.faiss"
 _META_FILE = INDEX_DIR / "cards.pkl"
@@ -113,6 +113,7 @@ def answer(question: str, k: int = 3) -> str:
                 "content": f"Catalog cards:\n\n{context}\n\n---\n\nQuestion: {question}",
             }
         ],
+        **effort_params(),
     )
     body = "".join(block.text for block in msg.content if block.type == "text")
     cites = ", ".join(f"{h.table} ({h.score:.2f})" for h in hits)

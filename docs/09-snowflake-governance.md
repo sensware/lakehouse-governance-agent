@@ -52,15 +52,15 @@ That's not a difference in ambition, just in where the enforcement point physica
 sits — and it's the single sentence to have ready if asked why a Snowflake/Databricks
 platform's guarantees are stronger than this demo's.
 
-## Client takeaway
+## Team takeaway
 
 > Snowflake's guide implements exactly the ABAC gap two Databricks articles named
 > independently — row access policies plus masking policies, both keyed off the
-> caller's role, enforced identically no matter which tool reaches the table. This PoC
+> caller's role, enforced identically no matter which tool reaches the table. This prototype
 > already built the same two primitives by the time we mapped it against Snowflake's
 > guide: a `Role.row_filters` dict substituted into the query text before it runs, and a
 > masking function gated by `unmask_pii`. The honest difference is where enforcement
-> sits — Snowflake's is in the query engine and can't be evaded by rephrasing; this PoC's
+> sits — Snowflake's is in the query engine and can't be evaded by rephrasing; this prototype's
 > is a regex-based rewrite in application code and, in principle, could be. That's the
-> one thing to lead with when comparing a real platform's guarantees to a PoC's: the
+> one thing to lead with when comparing a real platform's guarantees to a prototype's: the
 > pattern transfers directly, the enforcement point is what production would move.

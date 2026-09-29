@@ -1,20 +1,20 @@
 # The Complete Guide — Lakehouse Governance Agent
 
-> A proof-of-concept guide for BFSI clients evaluating GenAI-driven data governance.
-> It walks through everything in this repo, top to bottom, and explains every
-> concept and process in detail — assuming a data platform team that already knows
+> A training prototype for a BFSI data platform team building skills in GenAI-driven
+> data governance. It walks through everything in this repo, top to bottom, and
+> explains every concept and process in detail — assuming a team that already knows
 > lakehouse / medallion / data mesh but is new to the LLM / agent side.
 
 ---
 
 ## 0. How to read this
 
-The PoC is built in **seven phases**. Each phase takes one cluster of GenAI-for-
+The prototype is built in **seven phases**. Each phase takes one cluster of GenAI-for-
 governance capability and implements it against a problem a BFSI data platform team
 already understands — a bank's medallion lakehouse — so the unfamiliar AI concepts land
 on familiar ground.
 
-| Phase | You build | New concepts it demonstrates | Client requirement |
+| Phase | You build | New concepts it demonstrates | Skill it builds |
 |---|---|---|---|
 | 0 | A seeded BFSI medallion lakehouse in DuckDB | (revision) medallion, data mesh, data products, domains | Medallion, data products, lakehouse |
 | 1 | Metadata catalog + column profiler | Metadata as an LLM input; "catalog cards" | Data quality, lineage, metadata standards |
@@ -30,24 +30,24 @@ guide, which ties them together. `docs/07` and `docs/09` map three vendor articl
 (two Databricks, one Snowflake) to this repo line-by-line — and found real gaps,
 one of which (`docs/08`) is now Phase 6. `docs/10` is a classical Kimball dimensional-
 modeling pattern (the Null/Unknown Member) that sits alongside, not inside, the six AI
-phases — the client's existing data-platform discipline meeting its new AI capabilities
+phases — the team's existing data-platform discipline meeting its new AI capabilities
 in the same repo. `docs/11` is a bonus in the same spirit: the identical silver/gold
 transforms, redeployable via a real `dbt/` project — see §18.
 
 ---
 
-## 1. The business problem this PoC addresses
+## 1. The business problem this prototype addresses
 
-A BFSI client evaluating GenAI on their data platform is really asking for two
+A BFSI data platform team building GenAI skills is really combining two
 disciplines at once, usually without separating them:
 
-**Data-platform discipline** (what the client's team already has):
+**Data-platform discipline** (what the team already has):
 > Architect data lake / Lakehouse / streaming • data integration & pipeline patterns •
 > data quality, lineage, metadata standards • privacy/security/regulation compliance •
 > data products, data mesh, Medallion • Snowflake + Databricks on AWS/Azure • BFSI
 > transformation programmes • trusted advisor to stakeholders.
 
-**The GenAI mandate** (what this PoC exists to prove out):
+**The GenAI mandate** (what this prototype exists to prove out):
 > LLMs, prompt engineering, agent frameworks (LangChain, AutoGen, CrewAI) • MCP, ReAct,
 > Tree of Thought, AutoGPT-style reasoning • Python, OpenAI APIs, Anthropic Claude,
 > vector DBs (FAISS, Pinecone, Weaviate) • A2A orchestration, agent memory, tool calling •
@@ -467,7 +467,7 @@ told *not* to touch them.
 
 > **Design bug caught in the first live run:** the author set its own version *and*
 > `save()` bumped again → double bump (v2 → v4). Fix: versioning is a pure function of
-> the diff; the agents never touch it. This is a good point to make to a client — *"version
+> the diff; the agents never touch it. This is a good point to make to the team — *"version
 > bumps are a function of the change classification, not a judgement call."*
 
 ### "Review the diff, not the document"
@@ -741,7 +741,7 @@ The pieces that would be CI/CD jobs:
 | `policy.py::Role.row_filters` (SQL text substitution, Phase 6) | **Unity Catalog row filters** — engine-enforced, can't be evaded by rephrasing | **Row Access Policies** — `CREATE ROW ACCESS POLICY … AS (col) RETURNS BOOLEAN -> ...`, engine-enforced | Lake Formation row-level permissions / Dataplex data policies |
 | `catalog.py::_mask` + `Role.unmask_pii` (Phase 6) | Unity Catalog column masking | **Dynamic Data Masking** — `CREATE MASKING POLICY …`, multiple patterns (full/partial/tokenize) | Azure/GCP column-level masking policies |
 
-The answer when a client says *"we use Snowflake and Databricks, not DuckDB"*: **"The
+The answer when a teammate says *"we use Snowflake and Databricks, not DuckDB"*: **"The
 patterns are identical — swap the connection string and push the profiling SQL down to
 the warehouse. Here's the mapping table."** For the deeper argument behind several of
 these rows — why Databricks says agents belong *inside* the platform, why Snowflake
@@ -884,7 +884,7 @@ fast (FAISS, Pinecone, Weaviate, pgvector).
 
 ---
 
-## 15. Client Q&A
+## 15. Team Q&A
 
 **"How would this apply GenAI to data governance?"**
 RAG over live catalog metadata for discovery; a ReAct agent that generates
@@ -900,16 +900,16 @@ is expensive and lossy. Re-index in CI after each pipeline run.
 Hallucination → grounding contract + tools that return real data + a reviewer that
 re-derives numbers. Unsafe actions → read-only tool surface, sandboxed writes.
 PII leakage → mask at the tool boundary, at the one place every consumer reads from —
-this PoC found a real instance of this missing in `profile_column`, fixed it in
+this prototype found a real instance of this missing in `profile_column`, fixed it in
 `catalog.py`, and *deliberately* left the raw-access tool (`run_sql`) unmasked because
 the DQ-audit use case genuinely needs real values (docs/07). Non-determinism → log
 every tool call, pin models, make versioning deterministic. Anchoring → enumerate
 hypotheses before querying, HITL on critical findings.
 
 **"Databricks argues agents must move to the data, not the other way round — how does this hold up?"**
-Agreed, and this PoC is a working demonstration of the exact failure it describes: by
+Agreed, and this prototype is a working demonstration of the exact failure it describes: by
 design, the LLM calls sit outside any perimeter (straight to Anthropic's API), and
-mapping this PoC against that argument surfaced a real bug — a catalog `is_pii` flag
+mapping this prototype against that argument surfaced a real bug — a catalog `is_pii` flag
 that was metadata only, never enforced, so `profile_column` leaked raw names and
 emails. Fixed at the one place every consumer reads from. The deeper point stands,
 though: that's an application-level patch, not platform enforcement — a second tool
@@ -943,7 +943,7 @@ mapping table in §13.
 
 **"How would this implement row-level security and column masking for an AI agent?"**
 Both need to apply *before* computation, not after — you can't redact an aggregate
-once it's used a forbidden row. This PoC builds a `Role` (allowed tables, row filters,
+once it's used a forbidden row. This prototype builds a `Role` (allowed tables, row filters,
 a masking flag) consulted by every tool that reaches the data, so a restricted role
 sees the same tables and rows through SQL, a profiling tool, and a RAG retriever
 alike. Row filtering works by substituting a table reference with a pre-filtered
@@ -951,7 +951,7 @@ subquery before the rest of the query runs. On Snowflake that's a native row acc
 policy plus a masking policy, engine-enforced; here it's application-level and, unlike
 a platform feature, could in principle be evaded by a query the regex-based table
 matching doesn't recognize — the honest difference to lead with unprompted between a
-PoC and a platform feature, and the reason a production rollout would move enforcement
+prototype and a platform feature, and the reason a production rollout would move enforcement
 into the engine.
 
 ---
@@ -1007,7 +1007,7 @@ Outputs land in `artifacts/`. Approved contracts live in `contracts/`.
 | Gap | What a real platform does |
 |---|---|
 | Column-level lineage | Parse transformation SQL with `sqlglot`, or read dbt `manifest.json` / OpenLineage. `docs/11`'s `dbt/` gives table-level lineage for free (`dbt docs generate`'s DAG); column-level still isn't wired into `catalog.py`'s cards. |
-| Streaming | Most BFSI platforms run streaming systems alongside batch; this PoC is all batch. Add Kafka → a bronze stream + windowed silver. |
+| Streaming | Most BFSI platforms run streaming systems alongside batch; this prototype is all batch. Add Kafka → a bronze stream + windowed silver. |
 | Hybrid retrieval | Vector + BM25 keyword + a re-ranker; the run showed pure-vector missing an obvious table |
 | Agent memory across runs | Persist episodic summaries; load the prior contract as the author's starting point |
 | Notification side-effects | On a breaking change, open a ticket / post to the domain channel / start the 30-day clock |
@@ -1100,5 +1100,6 @@ dbt/                      Bonus: dbt deployment option for silver_*/gold_* (§18
 
 ---
 
-*Built as a proof of concept. Every AI capability a BFSI client would ask about is
-exercised on a real governance problem, locally, for the price of a few Claude API calls.*
+*Built as a training prototype. Every AI capability a BFSI data platform team would ask
+about is exercised on a real governance problem, locally, for the price of a few Claude
+API calls.*

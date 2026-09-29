@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: gold_customer_360
+    description: >
+      One row per customer (the Null Member included), aggregated from
+      silver_accounts and silver_transactions independently before joining — see the
+      model's header comment for the fan-out bug this avoids.
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - not_null
+      - name: total_balance
+        tests:
+          - not_null
+
+  - name: gold_monthly_channel_volume
+    description: >
+      Monthly transaction volume and gross value by channel. channel has no not_null
+      test: blank/null channel is a real bronze value (nullif'd, not filtered), so a
+      null-channel row here is an expected group, not a defect.
+    columns:
+      - name: month
+        tests: [not_null]

@@ -52,6 +52,7 @@ ground instead of a green field.
 | Layer | Here | On Databricks / Snowflake | Client requirement |
 |---|---|---|---|
 | Storage + medallion | DuckDB tables with `bronze_/silver_/gold_` prefixes | Delta/Iceberg tables in three schemas or catalogs; **Unity Catalog** / Snowflake DBs | Medallion, data products |
+| Transform layer (silver/gold) | Inline SQL in `data/build_lakehouse.py`, **or** declarative dbt models in `dbt/` (bonus, docs/11) — same tables either way | dbt on Snowflake/Databricks is the standard here; this repo's `dbt/` project is target-portable to both via `profiles.yml` | dbt, transformation pipelines |
 | Metadata + profiling | `catalog.py` queries `information_schema` + aggregates | **Unity Catalog** system tables + **Lakehouse Monitoring**, Snowflake `ACCOUNT_USAGE`, dbt `manifest.json`, Great Expectations / Soda | Quality, lineage, metadata standards |
 | Business context (domain/owner) | hand-written `DOMAIN_OWNERS` dict | **Genie** / **Genie Ontology** — auto-derived from tables, queries, dashboards | Metadata standards |
 | Lineage | Declared dict `LINEAGE` | **Unity Catalog** lineage API, OpenLineage events, Snowflake `OBJECT_DEPENDENCIES`; column-level via sqlglot/dbt | Lineage, data contracts |
@@ -74,7 +75,9 @@ real PII-masking gap they found (fixed in `catalog.py`) and the ABAC gap that be
 Phase 6 ([docs/08](08-abac-row-level-policy.md)). [docs/10](10-null-member-pattern.md)
 covers the Kimball Null/Unknown Member pattern, built alongside the six AI phases rather
 than inside them — the client's existing data-platform discipline meeting its new AI
-capabilities in the same repo.
+capabilities in the same repo. [docs/11](11-dbt-deployment.md) is a bonus, in the same
+spirit: the identical silver/gold transforms, redeployed declaratively via dbt, because
+that's how most BFSI platforms actually run this layer in production.
 
 ## Questions a client evaluation will raise
 

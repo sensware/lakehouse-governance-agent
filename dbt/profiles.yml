@@ -1,0 +1,42 @@
+# Checked in on purpose — every value below is either a local file path or an
+# env_var() reference; nothing here is a secret. Normally profiles.yml lives outside
+# the repo (~/.dbt/profiles.yml); it's kept here, pointed at with --profiles-dir .,
+# so the dbt deployment option needs zero machine setup beyond `uv sync --group dbt`.
+#
+# `duckdb` (below) is the only target anyone runs by default — it opens the exact
+# same file data/build_lakehouse.py seeds, so dbt build replaces the silver_*/gold_*
+# tables that script's inline SQL created, in place. `snowflake` and `databricks` are
+# illustrative, not exercised: they show a client the *only* thing that changes to
+# deploy these same models to their real platform is this file, selected with
+# `dbt build --target snowflake`. Swapping to either needs its adapter installed
+# (`dbt-snowflake` / `dbt-databricks`, not in this repo's dbt group) and every
+# env_var() below set — dbt errors clearly if one is missing, which is the point:
+# it never silently falls back to the local file.
+lakehouse_governance:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "../data/lakehouse.duckdb"
+      schema: main
+      threads: 4
+
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'TRANSFORMER') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'LAKEHOUSE_GOVERNANCE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'TRANSFORM_WH') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'MAIN') }}"
+      threads: 4
+
+    databricks:
+      type: databricks
+      host: "{{ env_var('DATABRICKS_HOST') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      catalog: "{{ env_var('DATABRICKS_CATALOG', 'lakehouse_governance') }}"
+      schema: "{{ env_var('DATABRICKS_SCHEMA', 'main') }}"
+      threads: 4

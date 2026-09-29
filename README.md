@@ -38,6 +38,10 @@ uv run lga --role branch_ops_london run-sql "SELECT DISTINCT city FROM silver_cu
 LGA_ROLE=branch_ops_london uv run lga agent "..." #          same role, respected by every tool the agent calls
 uv run lga run-sql "SELECT * FROM silver_customers WHERE customer_id = 0"
                                                    #          the Null/Unknown Member (Kimball) — see docs/10
+
+uv sync --group dbt && uv run lga dbt-build       # Bonus: rebuild silver_*/gold_* declaratively
+                                                   #          via dbt instead of build_lakehouse.py's
+                                                   #          inline SQL — see docs/11
 ```
 
 Outputs land in `artifacts/`.
@@ -58,6 +62,7 @@ Outputs land in `artifacts/`.
 | [docs/08-abac-row-level-policy.md](docs/08-abac-row-level-policy.md) | Phase 6: attribute-based access control — roles, row filters, column masking, one policy every tool obeys |
 | [docs/09-snowflake-governance.md](docs/09-snowflake-governance.md) | Snowflake's lakehouse-governance guide mapped to this repo — verifies Phase 6 against row access + masking policies |
 | [docs/10-null-member-pattern.md](docs/10-null-member-pattern.md) | Kimball's Null/Unknown Member dimension row — quarantine's complement, not its replacement |
+| [docs/11-dbt-deployment.md](docs/11-dbt-deployment.md) | Bonus: the same silver/gold transforms, deployed declaratively via dbt — adapter-portable macros, contract rules as `dbt test`, a Snowflake/Databricks target swap |
 
 ## Layout
 
@@ -77,6 +82,7 @@ tests/test_contract.py    offline tests for the diff engine
 tests/test_policy.py      offline tests for ABAC
 tests/test_config.py      offline tests for model/effort defaults + agent request wiring
 docs/                     one concept note per phase
+dbt/                      Bonus: dbt deployment option for silver_*/gold_* (docs/11)
 ```
 
 ## Use the tools from Claude Code

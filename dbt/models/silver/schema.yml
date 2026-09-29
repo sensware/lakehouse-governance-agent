@@ -1,0 +1,63 @@
+version: 2
+
+models:
+  - name: silver_customers
+    description: >
+      Cleansed, deduplicated customer master, one row per customer_id, plus the
+      Null/Unknown Member sentinel row (customer_id = 0). Contract:
+      contracts/silver_customers.yml. The generic tests below cover pk_not_null_unique
+      and names_present from that contract; kyc_status_enum, risk_rating_range,
+      adult_at_onboarding, row_conservation, and unknown_member_present are singular
+      tests in dbt/tests/ — same seven rules, same names, now runnable as `dbt test`.
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - not_null
+      - name: first_name
+        tests: [not_null]
+      - name: last_name
+        tests: [not_null]
+
+  - name: silver_customers_rejected
+    description: Quarantined bronze_customers rows, one reason code each.
+    columns:
+      - name: reason_code
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["DUPLICATE_ROW", "DOB_IMPLAUSIBLE", "DOB_AFTER_ONBOARDING", "MINOR_AT_ONBOARDING", "UNKNOWN"]
+
+  - name: silver_accounts
+    description: Every bronze account, repointed to the Null Member (customer_id = 0) if unresolved.
+    columns:
+      - name: account_id
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        tests: [not_null]
+
+  - name: silver_accounts_rejected
+    description: Audit log — every account repointed to the Null Member, with why.
+    columns:
+      - name: reason_code
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ORPHAN_CUSTOMER", "CUSTOMER_REJECTED_UPSTREAM"]
+
+  - name: silver_transactions
+    description: Deduplicated, conformed transactions on a resolvable account, no future dates.
+    columns:
+      - name: txn_id
+        tests: [not_null]
+      - name: account_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('silver_accounts')
+                field: account_id

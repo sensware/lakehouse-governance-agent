@@ -25,13 +25,14 @@ on familiar ground.
 | 6 | Attribute-based access control (row filters + column masking, one role, every tool) | ABAC, row-level security, data masking, policy-before-computation | Privacy/security/regulation compliance, responsible AI |
 
 Everything runs locally. Every command is `uv run lga <something>`. The whole
-thing is ~2,000 lines of Python plus eleven concept notes (`docs/00`–`10`) and this
+thing is ~2,000 lines of Python plus twelve concept notes (`docs/00`–`11`) and this
 guide, which ties them together. `docs/07` and `docs/09` map three vendor articles
 (two Databricks, one Snowflake) to this repo line-by-line — and found real gaps,
 one of which (`docs/08`) is now Phase 6. `docs/10` is a classical Kimball dimensional-
 modeling pattern (the Null/Unknown Member) that sits alongside, not inside, the six AI
 phases — the client's existing data-platform discipline meeting its new AI capabilities
-in the same repo.
+in the same repo. `docs/11` is a bonus in the same spirit: the identical silver/gold
+transforms, redeployable via a real `dbt/` project — see §18.
 
 ---
 
@@ -723,6 +724,7 @@ The pieces that would be CI/CD jobs:
 | This repo | Databricks | Snowflake | AWS / Azure / GCP |
 |---|---|---|---|
 | `bronze/silver/gold` DuckDB tables | Delta tables in 3 schemas; Unity Catalog | 3 databases/schemas; Iceberg or native | Lake Formation / Synapse / BigQuery datasets |
+| silver/gold built inline (`build_lakehouse.py`) **or** declaratively (`dbt/`, §18/docs/11) | dbt on Databricks (SQL warehouse or all-purpose cluster) | dbt on Snowflake | dbt on any of these, or the native transform service |
 | `catalog.py` profiling | Unity Catalog system tables; Lakehouse Monitoring | `ACCOUNT_USAGE`, `INFORMATION_SCHEMA`; Horizon | Glue Data Catalog / Purview / Dataplex |
 | `LINEAGE` dict | Unity Catalog lineage API; column-level automatic | `OBJECT_DEPENDENCIES`; Horizon lineage | OpenLineage / Purview / Dataplex lineage |
 | Quality rules | Lakehouse Monitoring, DLT expectations, Great Expectations | Data Metric Functions; Great Expectations / Soda | Deequ / Glue DQ / Dataplex DQ |
@@ -979,6 +981,10 @@ uv run lga evolve                      # simulate a pipeline schema change
 uv run lga contract-status silver_customers   # drift vs approved contract (exit 1 on drift)
 uv run lga contract-revise silver_customers   # drift → propose → diff → review → promote
 
+# Bonus — dbt deployment option (§18, docs/11), not a phase
+uv sync --group dbt                    # installs dbt-duckdb only for this
+uv run lga dbt-build                   # rebuild silver_*/gold_* declaratively, run every dbt test
+
 # tests (offline, no API)
 uv run pytest -q
 
@@ -994,7 +1000,7 @@ Outputs land in `artifacts/`. Approved contracts live in `contracts/`.
 
 | Gap | What a real platform does |
 |---|---|
-| Column-level lineage | Parse transformation SQL with `sqlglot`, or read dbt `manifest.json` / OpenLineage |
+| Column-level lineage | Parse transformation SQL with `sqlglot`, or read dbt `manifest.json` / OpenLineage. `docs/11`'s `dbt/` gives table-level lineage for free (`dbt docs generate`'s DAG); column-level still isn't wired into `catalog.py`'s cards. |
 | Streaming | Most BFSI platforms run streaming systems alongside batch; this PoC is all batch. Add Kafka → a bronze stream + windowed silver. |
 | Hybrid retrieval | Vector + BM25 keyword + a re-ranker; the run showed pure-vector missing an obvious table |
 | Agent memory across runs | Persist episodic summaries; load the prior contract as the author's starting point |
@@ -1009,7 +1015,42 @@ Outputs land in `artifacts/`. Approved contracts live in `contracts/`.
 
 ---
 
-## 18. Repo map
+## 18. Bonus: dbt as a deployment option
+
+**Files:** `dbt/` · **Commands:** `uv sync --group dbt && uv run lga dbt-build` (or
+`cd dbt && uv run --group dbt dbt build --profiles-dir .`) · **Doc:** [docs/11](11-dbt-deployment.md)
+
+Not a phase — the stamp on this project stays "6 phases built." This is an
+**alternative deployment** of work Phase 0 already does: the same `silver_*`/`gold_*`
+tables, built declaratively with dbt instead of the inline SQL in
+`data/build_lakehouse.py`. It exists because most BFSI platforms run dbt on Snowflake
+or Databricks for exactly this layer, and it's a question worth answering with a
+working `dbt/` project rather than a paragraph in a mapping table.
+
+Bronze is unaffected — `data/build_lakehouse.py` still owns it, dbt never seeds it.
+`dbt build` reads the same `data/lakehouse.duckdb` file and replaces `silver_*`/`gold_*`
+in place, so every downstream command (`catalog`, `agent`, `review`, MCP, ABAC roles)
+sees an identical result either way. Three things worth knowing before `docs/11`'s
+full walkthrough:
+
+- **`macros/initcap_portable.sql`** dispatches on `target.type` — `initcap()` natively
+  on Snowflake/Databricks, the manual expression only on DuckDB (which has no native
+  `initcap()`, hence `build_lakehouse.py`'s session `MACRO`). The dbt-native version of
+  §3's "same SQL shape on Snowflake/Spark SQL" claim.
+- **`contracts/silver_customers.yml`'s seven `quality_rules`** are now also `dbt test`s
+  — two as generic tests (`not_null`/`unique`), five as singular tests in `dbt/tests/`
+  that are near-literal transliterations of the contract's own assertion SQL. Two
+  independent mechanisms (this, and `contract.py::detect_drift`) checking the same
+  invariants — a stronger guarantee than either alone.
+- **`profiles.yml` ships three targets** — `duckdb` (default, exercised),
+  `snowflake` and `databricks` (illustrative: every value is `env_var(...)`, so dbt
+  refuses to guess a platform rather than silently falling back to the local file).
+  Swapping to a real warehouse is `dbt build --target snowflake` plus that adapter and
+  those env vars — no model changes.
+
+---
+
+## 19. Repo map
 
 ```
 data/
@@ -1041,7 +1082,13 @@ docs/
   08-abac-row-level-policy.md  Phase 6 write-up: roles, row filters, masking, honest limits
   09-snowflake-governance.md   Snowflake's guide mapped to this repo (verifies Phase 6)
   10-null-member-pattern.md    Kimball's Null/Unknown Member — quarantine's complement, not its replacement
+  11-dbt-deployment.md         Bonus: silver/gold redeployed declaratively via dbt (§18)
   GUIDE.md                this document
+dbt/                      Bonus: dbt deployment option for silver_*/gold_* (§18, docs/11)
+  dbt_project.yml, profiles.yml   duckdb target (default) + illustrative snowflake/databricks
+  models/silver/, models/gold/   one model per table, translated from build_lakehouse.py
+  macros/initcap_portable.sql    adapter-dispatch macro (native initcap vs DuckDB's gap)
+  tests/                    contracts/silver_customers.yml's quality_rules, as dbt tests
 .mcp.json                 registers the MCP server for Claude Code in this folder
 ```
 

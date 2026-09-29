@@ -33,3 +33,9 @@ module-root = "src"
 dev = [
     "pytest>=9.1.1",
 ]
+# Optional: the dbt deployment option (docs/11). Not needed for build-data/agent/rag/
+# MCP/A2A/contracts/ABAC — install with `uv sync --group dbt` only when you want to
+# materialize silver_*/gold_* via dbt instead of data/build_lakehouse.py's inline SQL.
+dbt = [
+    "dbt-duckdb>=1.9",
+]

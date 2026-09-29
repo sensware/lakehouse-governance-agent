@@ -1,0 +1,31 @@
+name: lakehouse_governance
+version: "1.0.0"
+config-version: 2
+
+# `uv sync --group dbt && cd dbt && uv run --group dbt dbt build --profiles-dir .`
+# (or from the repo root: `uv run lga dbt-build`)
+#
+# This project is an ALTERNATIVE deployment of the silver_*/gold_* layer that
+# data/build_lakehouse.py already builds with inline Python + SQL. It reads the same
+# bronze_* tables (bronze is always seeded by build_lakehouse.py — dbt never touches
+# it) and rebuilds silver_*/gold_* declaratively: one model per table, one generic or
+# singular test per contracts/silver_customers.yml quality rule, `dbt docs` for free.
+# See docs/11-dbt-deployment.md for why this exists and what it demonstrates.
+
+profile: lakehouse_governance
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  lakehouse_governance:
+    +materialized: table
+    silver:
+      +tags: ["silver"]
+    gold:
+      +tags: ["gold"]

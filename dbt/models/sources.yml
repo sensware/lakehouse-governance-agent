@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: lakehouse
+    schema: main
+    description: >
+      The bronze layer — always seeded by `data/build_lakehouse.py`, never by dbt.
+      dbt owns the transformation layer (silver_*/gold_*) in this project, not
+      ingestion; that split is the same one a real platform draws between an
+      ingest job and the dbt models that run after it.
+    tables:
+      - name: bronze_customers
+        description: Raw customer landing rows — dupes, bad enums, implausible DOBs.
+        columns:
+          - name: customer_id
+            description: Natural key from the source system; not yet unique (dupes present).
+      - name: bronze_accounts
+        description: Raw account landing rows — a handful reference no real customer_id.
+      - name: bronze_transactions
+        description: Raw transaction landing rows — dupes and ~2% future-dated timestamps.

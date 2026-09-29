@@ -49,6 +49,19 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_sql.add_argument("sql")
 
+    p_dbt = sub.add_parser(
+        "dbt-build",
+        help="rebuild silver_*/gold_* declaratively via dbt instead of build_lakehouse.py's "
+        "inline SQL — an alternative deployment option, not a phase (docs/11); bronze_* must "
+        "already exist (run build-data first)",
+    )
+    p_dbt.add_argument(
+        "--target",
+        default=None,
+        help="dbt target from dbt/profiles.yml (default: duckdb). snowflake/databricks are "
+        "illustrative only — see dbt/profiles.yml before ever passing them.",
+    )
+
     args = parser.parse_args(argv)
     if args.role:
         os.environ["LGA_ROLE"] = args.role
@@ -121,6 +134,22 @@ def main(argv: list[str] | None = None) -> None:
         con.print(result["columns"])
         for row in result["rows"]:
             con.print(row)
+    elif args.cmd == "dbt-build":
+        import shutil
+        import subprocess
+
+        from .config import REPO_ROOT
+
+        if shutil.which("dbt") is None:
+            raise SystemExit(
+                "dbt is not on PATH. Install the optional dbt group first:\n"
+                "    uv sync --group dbt\n"
+                "then re-run `uv run lga dbt-build` (which shells out to `uv run --group dbt dbt`)."
+            )
+        cmd = ["dbt", "build", "--profiles-dir", "."]
+        if args.target:
+            cmd += ["--target", args.target]
+        raise SystemExit(subprocess.run(cmd, cwd=str(REPO_ROOT / "dbt")).returncode)
 
 
 if __name__ == "__main__":

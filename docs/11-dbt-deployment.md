@@ -6,10 +6,10 @@
 This is not a seventh AI phase — the stamp on this project stays "6 phases built."
 It's an **alternative deployment** of work Phase 0 already does: the same
 `silver_*`/`gold_*` tables, built declaratively with dbt instead of the inline SQL in
-`data/build_lakehouse.py`. It exists because almost every BFSI platform team
-evaluating this PoC already runs dbt on Snowflake or Databricks for exactly this
-layer, and "how does your transform layer map onto our dbt project" is a question
-worth answering with working code, not a paragraph.
+`data/build_lakehouse.py`. It exists because almost every BFSI platform team already
+runs dbt on Snowflake or Databricks for exactly this layer, and "how does this
+project's transform layer map onto our dbt project" is a question worth answering
+with working code, not a paragraph.
 
 ## Why this is additive, not a replacement
 
@@ -31,13 +31,13 @@ uv run lga catalog         # reads whichever built silver_*/gold_* last; identic
 
 ## What changed, going from inline SQL to dbt models
 
-| `data/build_lakehouse.py` | `dbt/` | Why it matters to a client |
+| `data/build_lakehouse.py` | `dbt/` | Why it matters to the team |
 |---|---|---|
 | One Python script, five `CREATE TABLE ... AS` statements plus one `INSERT` | One dbt model per table (`dbt/models/silver/*.sql`, `dbt/models/gold/*.sql`) | Each transformation is independently reviewable, testable, and lineage-traceable — the unit a data platform team actually works in |
 | `con.execute("CREATE MACRO initcap(s) AS ...")` — a DuckDB-only session macro, because DuckDB has no native `initcap()` | `macros/initcap_portable.sql` — dispatches on `target.type`: `initcap()` on Snowflake/Databricks, the manual expression only on DuckDB | The exact same model SQL compiles correctly on every target in `profiles.yml`; DuckDB's one gap is patched, not exposed to every model that needs it |
 | Implicit dependency order (top-to-bottom statements in one file) | Explicit `{{ ref(...) }}` graph — dbt topologically sorts and can run subsets, in parallel (4 threads here) | `dbt run --select silver_customers+` rebuilds one lineage branch; the script always rebuilds everything |
 | Manual row-count print at the end | `dbt test`: 7 generic tests (not_null/unique/accepted_values/relationships) + 5 singular tests, one per `contracts/silver_customers.yml` `quality_rule` not already covered by a generic test | The contract's assertions are no longer a YAML file a reviewer agent reads by convention — they're an enforced CI gate, exit-code and all |
-| No documentation artifact | `dbt docs generate && dbt docs serve` — a browsable lineage graph + column docs, for free | This is the artifact a client's platform team already expects from a transform layer |
+| No documentation artifact | `dbt docs generate && dbt docs serve` — a browsable lineage graph + column docs, for free | This is the artifact a platform team already expects from a transform layer |
 | One target: the local DuckDB file | Three targets in `profiles.yml`: `duckdb` (default, exercised), `snowflake` and `databricks` (illustrative, need their adapters + `env_var()`s set) | Answers "does this run on our platform" directly: `dbt build --target snowflake`, same models |
 
 ## The one place the SQL had to change: `initcap`
@@ -104,7 +104,7 @@ only on failure is the one translation every one of the five singular tests make
 `snowflake` and `databricks` are real target blocks, not comments — every value is
 `env_var('SNOWFLAKE_ACCOUNT')` or similar, so dbt fails loudly (a clear "env var not
 set" error) rather than silently falling back to the local file if someone runs
-`dbt build --target snowflake` without configuring it. That's deliberate: a client
+`dbt build --target snowflake` without configuring it. That's deliberate: the team
 should see dbt *refuse* to guess which platform it's talking to, the same way
 `policy.py`'s ABAC (docs/08) refuses to guess which role is calling.
 
@@ -118,7 +118,7 @@ should see dbt *refuse* to guess which platform it's talking to, the same way
 - **No `dbt-snowflake`/`dbt-databricks` installed.** Those targets are illustrative —
   correct, `env_var()`-gated, never exercised in this repo. Installing either adapter
   and pointing it at a real warehouse is the natural next step for a team that wants
-  to run this for real, not something this PoC can verify without one.
+  to run this for real, not something this prototype can verify without one.
 - **No incremental models.** Every model here is `+materialized: table`, a full
   rebuild every run — appropriate for a ~300-customer demo, not for the transaction
   volume a real bank produces. `materialized='incremental'` with an `is_incremental()`

@@ -1,12 +1,12 @@
-# 00 — Architecture & how this maps to a client's platform
+# 00 — Architecture & how this maps to a real platform
 
 ## What this project is
 
-A **governance agent for a medallion lakehouse** — a proof of concept for BFSI clients
-evaluating GenAI *on the data value chain* rather than in a customer-facing chatbot. Every
-capability here is exercised on the problems a BFSI data platform already has (catalog,
-quality, lineage, contracts, access control), so the new AI concepts land on familiar
-ground instead of a green field.
+A **governance agent for a medallion lakehouse** — a training prototype for a BFSI
+data platform team building skills in GenAI *on the data value chain* rather than in a
+customer-facing chatbot. Every capability here is exercised on the problems a BFSI
+data platform team already has (catalog, quality, lineage, contracts, access control),
+so the new AI concepts land on familiar ground instead of a green field.
 
 ```
                 ┌──────────────────────────────────────────────────────────────┐
@@ -49,7 +49,7 @@ ground instead of a green field.
 
 ## Layer-by-layer: what it teaches, and where it lives in a real platform
 
-| Layer | Here | On Databricks / Snowflake | Client requirement |
+| Layer | Here | On Databricks / Snowflake | Skill it builds |
 |---|---|---|---|
 | Storage + medallion | DuckDB tables with `bronze_/silver_/gold_` prefixes | Delta/Iceberg tables in three schemas or catalogs; **Unity Catalog** / Snowflake DBs | Medallion, data products |
 | Transform layer (silver/gold) | Inline SQL in `data/build_lakehouse.py`, **or** declarative dbt models in `dbt/` (bonus, docs/11) — same tables either way | dbt on Snowflake/Databricks is the standard here; this repo's `dbt/` project is target-portable to both via `profiles.yml` | dbt, transformation pipelines |
@@ -74,12 +74,12 @@ articles (two Databricks, one Snowflake) line by line against this repo — incl
 real PII-masking gap they found (fixed in `catalog.py`) and the ABAC gap that became
 Phase 6 ([docs/08](08-abac-row-level-policy.md)). [docs/10](10-null-member-pattern.md)
 covers the Kimball Null/Unknown Member pattern, built alongside the six AI phases rather
-than inside them — the client's existing data-platform discipline meeting its new AI
+than inside them — the team's existing data-platform discipline meeting its new AI
 capabilities in the same repo. [docs/11](11-dbt-deployment.md) is a bonus, in the same
 spirit: the identical silver/gold transforms, redeployed declaratively via dbt, because
 that's how most BFSI platforms actually run this layer in production.
 
-## Questions a client evaluation will raise
+## Questions a team walkthrough will raise
 
 1. **"How would you use GenAI in data governance?"** — RAG over live metadata for discovery;
    agents that *generate evidence-backed* DQ rules and contracts; a reviewer agent as a

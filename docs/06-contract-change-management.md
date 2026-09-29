@@ -7,7 +7,7 @@ detect → propose → diff → review → promote.
 
 This is *"drive consensus on standards (e.g. data contracts, lineage) across different
 data organizations"* and *"architectural guardrails"* — the exact governance capability
-a BFSI client's data organization needs across domains — mechanised.
+a BFSI data platform team needs across domains — mechanised.
 
 ## The pieces
 

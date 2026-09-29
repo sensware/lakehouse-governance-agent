@@ -45,6 +45,6 @@ tests/assert_*.sql  singular tests, one per contracts/silver_customers.yml quali
 ## Why this exists
 
 See [docs/11-dbt-deployment.md](../docs/11-dbt-deployment.md) — short version: most
-BFSI platforms run dbt on Snowflake or Databricks for exactly this layer, and a
-client evaluation will ask how this project's transformations map onto that. This
+BFSI platforms run dbt on Snowflake or Databricks for exactly this layer, and a team
+walkthrough will ask how this project's transformations map onto that. This
 answers it by shipping a working dbt project instead of a paragraph about one.

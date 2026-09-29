@@ -981,6 +981,12 @@ uv run lga evolve                      # simulate a pipeline schema change
 uv run lga contract-status silver_customers   # drift vs approved contract (exit 1 on drift)
 uv run lga contract-revise silver_customers   # drift → propose → diff → review → promote
 
+# Phase 6 — attribute-based access control (ABAC)
+uv run lga --role branch_ops_london list-tables         # bronze_* gone, only 6 tables visible
+uv run lga --role branch_ops_london run-sql "SELECT DISTINCT city FROM silver_customers"
+                                        # -> only London (row filter, applied before the query runs)
+LGA_ROLE=branch_ops_london uv run lga agent "..."        # same role, respected by every tool the agent calls
+
 # Bonus — dbt deployment option (§18, docs/11), not a phase
 uv sync --group dbt                    # installs dbt-duckdb only for this
 uv run lga dbt-build                   # rebuild silver_*/gold_* declaratively, run every dbt test
